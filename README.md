@@ -1,18 +1,26 @@
-# 🖼️ Bad JPG Finder
+# 🖼️ Bad Image Finder
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Colorful](https://img.shields.io/badge/output-colorful-orange)
 
-**A lightning-fast tool to find and clean up corrupt JPEG images from your photo collection.**
+**A lightning-fast tool to find and clean up corrupt image files from your photo collection.**
 
 </div>
 
 ## ✨ Features
 
+- **Supports Multiple Image Formats**:
+  - 📸 **JPEG** (.jpg, .jpeg, .jfif, etc.)
+  - 🎨 **PNG** (.png)
+  - 📄 **TIFF** (.tiff, .tif)
+  - 🎭 **GIF** (.gif)
+  - 🖼️ **BMP** (.bmp)
+  - 🌐 **WebP** (.webp)
+  - 📱 **HEIC** (.heic)
 - **High Performance**: Parallel processing to handle thousands of images efficiently
 - **Thorough Validation**: Checks both image headers and data to identify corruption
 - **Multiple Operation Modes**:
@@ -26,6 +34,7 @@
 - **Flexible Configuration**:
   - Control recursion depth
   - Adjust worker count
+  - Filter by image format
   - Save reports for later review
 
 ## 📋 Requirements
@@ -48,7 +57,7 @@ cd bad-jpg-finder
 pip install -r requirements.txt
 
 # Make executable (Unix/macOS)
-chmod +x find_bad_jpgs.py
+chmod +x find_bad_images.py
 ```
 
 ## 🧰 Usage
@@ -56,7 +65,7 @@ chmod +x find_bad_jpgs.py
 ### Basic (Safe) Mode
 
 ```bash
-./find_bad_jpgs.py /path/to/images
+./find_bad_images.py /path/to/images
 ```
 
 This performs a dry run, showing which files would be deleted without making changes.
@@ -64,45 +73,69 @@ This performs a dry run, showing which files would be deleted without making cha
 ### Delete Mode
 
 ```bash
-./find_bad_jpgs.py /path/to/images --delete
+./find_bad_images.py /path/to/images --delete
 ```
 
-⚠️ **Warning**: This permanently deletes corrupt JPG files!
+⚠️ **Warning**: This permanently deletes corrupt image files!
 
 ### Move Mode
 
 ```bash
-./find_bad_jpgs.py /path/to/images --move-to /path/to/corrupt_folder
+./find_bad_images.py /path/to/images --move-to /path/to/corrupt_folder
 ```
 
 Safely relocates corrupt files to a separate directory for review.
 
+### Filter By Format
+
+```bash
+# Check only JPEG files
+./find_bad_images.py /path/to/images --jpeg
+
+# Check only PNG files
+./find_bad_images.py /path/to/images --png
+
+# Check specific formats
+./find_bad_images.py /path/to/images --formats JPEG PNG TIFF
+```
+
 ### All Options
 
 ```
-usage: find_bad_jpgs.py [-h] [--delete] [--move-to MOVE_TO] [--workers WORKERS]
-                         [--non-recursive] [--output OUTPUT] [--verbose]
-                         [--no-color] directory
+usage: find_bad_images.py [-h] [--delete] [--move-to MOVE_TO] [--workers WORKERS]
+                          [--non-recursive] [--output OUTPUT] [--verbose]
+                          [--no-color] [--formats {JPEG,PNG,GIF,TIFF,BMP,WEBP,ICO,HEIC} [...]]
+                          [--jpeg] [--png] [--tiff] [--gif] [--bmp]
+                          directory
 
 positional arguments:
-  directory         Directory to search for JPG files
+  directory         Directory to search for image files
 
 optional arguments:
   -h, --help        Show this help message and exit
-  --delete          Delete corrupt JPG files (without this flag, runs in dry-run mode)
+  --delete          Delete corrupt image files (without this flag, runs in dry-run mode)
   --move-to MOVE_TO Move corrupt files to this directory instead of deleting them
   --workers WORKERS Number of worker processes (default: CPU count)
   --non-recursive   Only search in the specified directory, not subdirectories
   --output OUTPUT   Save list of corrupt files to this file
   --verbose, -v     Enable verbose logging
   --no-color        Disable colored output (useful for logs or non-interactive terminals)
+
+Image format options:
+  --formats {JPEG,PNG,GIF,TIFF,BMP,WEBP,ICO,HEIC} [...]
+                        Image formats to check (default: all formats)
+  --jpeg               Check JPEG files only
+  --png                Check PNG files only
+  --tiff               Check TIFF files only
+  --gif                Check GIF files only
+  --bmp                Check BMP files only
 ```
 
 ## 🔍 How It Works
 
-Bad JPG Finder uses a two-step validation process to catch different types of image corruption:
+Bad Image Finder uses a two-step validation process to catch different types of image corruption:
 
-1. **Header Verification**: Checks if the file has a valid JPEG header structure
+1. **Header Verification**: Checks if the file has a valid image header structure
 2. **Data Validation**: Attempts to load the image data to detect deeper corruption issues
 
 This approach is more thorough than simple header checks, catching partially downloaded files, truncated images, and data corruption.
@@ -118,31 +151,37 @@ This approach is more thorough than simple header checks, catching partially dow
 ### Check a large photo library and save report
 
 ```bash
-./find_bad_jpgs.py /Volumes/Photos --output corrupt_photos.txt --verbose
+./find_bad_images.py /Volumes/Photos --output corrupt_photos.txt --verbose
 ```
 
 ### Process a NAS archive with limited CPU impact
 
 ```bash
-./find_bad_jpgs.py /mnt/nas/archive --workers 2
+./find_bad_images.py /mnt/nas/archive --workers 2
 ```
 
 ### Quick check of recent imports
 
 ```bash
-./find_bad_jpgs.py ~/Pictures/imports --non-recursive
+./find_bad_images.py ~/Pictures/imports --non-recursive
 ```
 
 ### Clean up and reclaim space immediately
 
 ```bash
-./find_bad_jpgs.py /Volumes/ExternalDrive --delete --verbose
+./find_bad_images.py /Volumes/ExternalDrive --delete --verbose
 ```
 
 ### Disable colorful output for log files
 
 ```bash
-./find_bad_jpgs.py /Volumes/Photos --output corrupt_photos.txt --no-color > logfile.txt
+./find_bad_images.py /Volumes/Photos --output corrupt_photos.txt --no-color > logfile.txt
+```
+
+### Check RAW images and JPEG files
+
+```bash
+./find_bad_images.py /Volumes/Photos --formats JPEG TIFF
 ```
 
 ## 🤝 Contributing
@@ -160,7 +199,7 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 ---
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/preview.gif" alt="Bad JPG Finder in action" width="700">
+<img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/preview.gif" alt="Bad Image Finder in action" width="700">
 
 Made with ❤️ by your friendly neighborhood coder
 </div>
