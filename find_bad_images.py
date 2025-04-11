@@ -55,7 +55,7 @@ REPAIRABLE_FORMATS = ['JPEG', 'PNG', 'GIF']
 DEFAULT_PROGRESS_DIR = os.path.expanduser("~/.bad_image_finder/progress")
 
 # Current version
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 def setup_logging(verbose, no_color=False):
     level = logging.DEBUG if verbose else logging.INFO
@@ -198,6 +198,72 @@ def check_jpeg_structure(file_path):
     except Exception as e:
         return False, f"Error during JPEG structure check: {str(e)}"
 
+def check_png_structure(file_path):
+    """
+    Performs a deep check of PNG file structure to find corruption.
+    Returns (is_valid, error_message)
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        
+        # Check for PNG signature
+        png_signature = b'\x89PNG\r\n\x1a\n'
+        if not data.startswith(png_signature):
+            return False, "Invalid PNG signature"
+        
+        # Check minimum viable PNG (signature + IHDR chunk)
+        if len(data) < 8 + 12:  # 8 bytes signature + 12 bytes min IHDR chunk
+            return False, "PNG file too small to contain valid header"
+            
+        # Check for IEND chunk at the end
+        if not data.endswith(b'IEND\xaeB`\x82'):
+            return False, "Missing IEND chunk at end of file"
+        
+        # Parse chunks
+        pos = 8  # Skip signature
+        required_chunks = {'IHDR': False}
+        
+        while pos < len(data):
+            if pos + 8 > len(data):
+                return False, "Truncated chunk header"
+                
+            # Read chunk length and type
+            chunk_len = struct.unpack('>I', data[pos:pos+4])[0]
+            chunk_type = data[pos+4:pos+8].decode('ascii', errors='replace')
+            
+            # Validate chunk length
+            if pos + chunk_len + 12 > len(data):
+                return False, f"Truncated {chunk_type} chunk"
+            
+            # Track required chunks
+            if chunk_type in required_chunks:
+                required_chunks[chunk_type] = True
+                
+            # Special validation for IHDR chunk
+            if chunk_type == 'IHDR' and chunk_len != 13:
+                return False, "Invalid IHDR chunk length"
+                
+            # Mandatory IHDR must be first chunk
+            if pos == 8 and chunk_type != 'IHDR':
+                return False, "First chunk must be IHDR"
+                
+            # IEND must be the last chunk
+            if chunk_type == 'IEND' and pos + chunk_len + 12 != len(data):
+                return False, "Data after IEND chunk"
+            
+            # Move to next chunk
+            pos += chunk_len + 12  # Length (4) + Type (4) + Data (chunk_len) + CRC (4)
+        
+        # Verify required chunks
+        for chunk, present in required_chunks.items():
+            if not present:
+                return False, f"Missing required {chunk} chunk"
+                
+        return True, "PNG structure appears valid"
+    except Exception as e:
+        return False, f"Error during PNG structure check: {str(e)}"
+
 def try_external_tools(file_path):
     """
     Try using external tools to validate the image if they're available.
@@ -239,10 +305,18 @@ def try_full_decode_check(file_path):
     except Exception as e:
         return False, f"Full decode test failed: {str(e)}"
 
-def is_valid_image(file_path, thorough=True):
+def is_valid_image(file_path, thorough=True, sensitivity='medium', ignore_eof=False):
     """
     Validate image file integrity using multiple methods.
-    Returns True if valid, False if corrupt.
+    
+    Args:
+        file_path: Path to the image file
+        thorough: Whether to perform deep structure validation
+        sensitivity: 'low', 'medium', or 'high'
+        ignore_eof: Whether to ignore missing end-of-file markers
+    
+    Returns:
+        True if valid, False if corrupt.
     """
     # Basic PIL validation first (fast check)
     try:
@@ -256,7 +330,7 @@ def is_valid_image(file_path, thorough=True):
                 img2.load()
                 
             # If thorough checking is disabled, return after basic check
-            if not thorough:
+            if not thorough or sensitivity == 'low':
                 return True
                 
             # For JPEG files, do additional structure checking
@@ -264,8 +338,12 @@ def is_valid_image(file_path, thorough=True):
                 # Check JPEG structure
                 is_valid, error_msg = check_jpeg_structure(file_path)
                 if not is_valid:
-                    logging.debug(f"JPEG structure invalid for {file_path}: {error_msg}")
-                    return False
+                    # If ignore_eof is enabled and the only issue is missing EOI marker, consider it valid
+                    if ignore_eof and error_msg == "Missing EOI marker at end of file":
+                        logging.debug(f"Ignoring missing EOI marker for {file_path} as requested")
+                    else:
+                        logging.debug(f"JPEG structure invalid for {file_path}: {error_msg}")
+                        return False
                 
                 # Try full decode test (catches subtle corruption)
                 is_valid, error_msg = try_full_decode_check(file_path)
@@ -277,6 +355,20 @@ def is_valid_image(file_path, thorough=True):
                 is_valid, error_msg = try_external_tools(file_path)
                 if not is_valid:
                     logging.debug(f"External tool validation failed for {file_path}: {error_msg}")
+                    return False
+            
+            # For PNG files, do additional structure checking
+            elif file_path.lower().endswith(tuple(SUPPORTED_FORMATS['PNG'])):
+                # Check PNG structure
+                is_valid, error_msg = check_png_structure(file_path)
+                if not is_valid:
+                    logging.debug(f"PNG structure invalid for {file_path}: {error_msg}")
+                    return False
+                
+                # Try full decode test (catches subtle corruption)
+                is_valid, error_msg = try_full_decode_check(file_path)
+                if not is_valid:
+                    logging.debug(f"Full decode test failed for {file_path}: {error_msg}")
                     return False
                     
             return True
@@ -358,10 +450,10 @@ def attempt_repair(file_path, backup_dir=None):
 
 def process_file(args):
     """Process a single image file."""
-    file_path, repair_mode, repair_dir, thorough_check = args
+    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof = args
     
     # Check if the image is valid
-    is_valid = is_valid_image(file_path, thorough=thorough_check)
+    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity, ignore_eof=ignore_eof)
     
     if not is_valid and repair_mode:
         # Try to repair the file
@@ -509,7 +601,7 @@ def find_image_files(directory, formats, recursive=True):
 def process_images(directory, formats, dry_run=True, repair=False, 
                   max_workers=None, recursive=True, move_to=None, repair_dir=None,
                   save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR,
-                  thorough_check=False):
+                  thorough_check=False, sensitivity='medium', ignore_eof=False):
     """Find corrupt image files and optionally repair, delete, or move them."""
     start_time = time.time()
     
@@ -565,7 +657,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         logging.info(f"Created directory for backup files: {repair_dir}")
     
     # Prepare input arguments for workers
-    input_args = [(file_path, repair, repair_dir, thorough_check) for file_path in image_files]
+    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof) for file_path in image_files]
     
     # Process files in parallel
     logging.info("Processing files in parallel...")
@@ -726,6 +818,10 @@ def main():
     validation_group = parser.add_argument_group('Validation options')
     validation_group.add_argument('--thorough', action='store_true', 
                                  help='Perform thorough image validation (slower but catches more subtle corruption)')
+    validation_group.add_argument('--sensitivity', type=str, choices=['low', 'medium', 'high'], default='medium',
+                                help='Set validation sensitivity level: low (basic checks), medium (standard checks), high (most strict)')
+    validation_group.add_argument('--ignore-eof', action='store_true',
+                                help='Ignore missing end-of-file markers (useful for truncated but viewable files)')
     
     # Progress saving options
     progress_group = parser.add_argument_group('Progress options')
@@ -774,7 +870,7 @@ def main():
         except Exception as e:
             print(f"❌ Cannot open file with PIL: {str(e)}")
         
-        # Detailed JPEG checks
+        # Detailed format-specific checks
         if file_path.lower().endswith(tuple(SUPPORTED_FORMATS['JPEG'])):
             print(f"\n{colorama.Fore.CYAN}JPEG structure checks:{colorama.Style.RESET_ALL}")
             is_valid, msg = check_jpeg_structure(file_path)
@@ -782,6 +878,13 @@ def main():
                 print(f"✓ JPEG structure valid: {msg}")
             else:
                 print(f"❌ JPEG structure invalid: {msg}")
+        elif file_path.lower().endswith(tuple(SUPPORTED_FORMATS['PNG'])):
+            print(f"\n{colorama.Fore.CYAN}PNG structure checks:{colorama.Style.RESET_ALL}")
+            is_valid, msg = check_png_structure(file_path)
+            if is_valid:
+                print(f"✓ PNG structure valid: {msg}")
+            else:
+                print(f"❌ PNG structure invalid: {msg}")
         
         # Decode test
         print(f"\n{colorama.Fore.CYAN}Full decode test:{colorama.Style.RESET_ALL}")
@@ -921,6 +1024,21 @@ def main():
     if args.thorough:
         thorough_str = f"{colorama.Fore.MAGENTA}THOROUGH MODE{colorama.Style.RESET_ALL}: Using deep validation checks (slower but more accurate)"
         logging.info(thorough_str)
+        
+    # Show sensitivity level
+    sensitivity_colors = {
+        'low': colorama.Fore.GREEN,
+        'medium': colorama.Fore.YELLOW,
+        'high': colorama.Fore.RED
+    }
+    sensitivity_color = sensitivity_colors.get(args.sensitivity, colorama.Fore.YELLOW)
+    sensitivity_str = f"{sensitivity_color}SENSITIVITY: {args.sensitivity.upper()}{colorama.Style.RESET_ALL}"
+    logging.info(sensitivity_str)
+    
+    # Show EOF handling
+    if args.ignore_eof:
+        eof_str = f"{colorama.Fore.CYAN}IGNORING EOF MARKERS{colorama.Style.RESET_ALL}: Allowing truncated but viewable files"
+        logging.info(eof_str)
     
     # Show which formats we're checking
     format_list = ", ".join(formats)
@@ -940,7 +1058,9 @@ def main():
             save_progress_interval=args.save_interval,
             resume_session=args.resume,
             progress_dir=args.progress_dir,
-            thorough_check=args.thorough
+            thorough_check=args.thorough,
+            sensitivity=args.sensitivity,
+            ignore_eof=args.ignore_eof
         )
         
         # Colorful summary
