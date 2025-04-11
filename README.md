@@ -9,6 +9,8 @@
 
 **A lightning-fast tool to find and clean up corrupt image files from your photo collection.**
 
+*Created by [Richard Young](https://github.com/ricyoung)*
+
 </div>
 
 ## ✨ Features
@@ -201,5 +203,5 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 <div align="center">
 <img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/preview.gif" alt="Bad Image Finder in action" width="700">
 
-Made with ❤️ by your friendly neighborhood coder
+Made with ❤️ by Richard Young
 </div>

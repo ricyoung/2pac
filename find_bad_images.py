@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+Bad Image Finder - A tool to find and clean up corrupt image files.
+Author: Richard Young
+License: MIT
+"""
 
 import os
 import argparse
@@ -189,7 +194,10 @@ def process_images(directory, formats, dry_run=True, max_workers=None, recursive
     return bad_files, total_size_saved
 
 def main():
-    parser = argparse.ArgumentParser(description='Find and delete corrupt image files')
+    parser = argparse.ArgumentParser(
+        description='Find and delete corrupt image files',
+        epilog='Created by Richard Young - https://github.com/ricyoung/bad-jpg-finder'
+    )
     parser.add_argument('directory', help='Directory to search for image files')
     parser.add_argument('--delete', action='store_true', help='Delete corrupt image files (without this flag, runs in dry-run mode)')
     parser.add_argument('--move-to', type=str, help='Move corrupt files to this directory instead of deleting them')
@@ -198,6 +206,7 @@ def main():
     parser.add_argument('--output', type=str, help='Save list of corrupt files to this file')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     parser.add_argument('--no-color', action='store_true', help='Disable colored output')
+    parser.add_argument('--version', action='version', version='Bad Image Finder v1.1.0 by Richard Young')
     
     # Format options
     format_group = parser.add_argument_group('Image format options')
@@ -279,6 +288,11 @@ def main():
         savings_color = colorama.Fore.GREEN if total_size_saved > 0 else colorama.Fore.RESET
         savings_msg = f"Total space savings: {savings_color}{savings_str}{colorama.Style.RESET_ALL}"
         logging.info(savings_msg)
+        
+        if not args.no_color:
+            # Add signature at the end of the run
+            signature = f"\n{colorama.Fore.CYAN}Bad Image Finder v1.1.0 by Richard Young{colorama.Style.RESET_ALL}"
+            print(signature)
         
         # Save list of corrupt files if requested
         if args.output and bad_files:
