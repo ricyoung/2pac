@@ -184,35 +184,95 @@ Progress options:
 
 ## 🔍 How It Works
 
-Bad Image Finder uses a multi-step approach to handle corrupt image files:
+<div align="center">
+<img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/docs/workflow.png" alt="Bad Image Finder Workflow" width="700">
+</div>
 
-### Validation Process
-1. **Header Verification**: Checks if the file has a valid image header structure
-2. **Data Validation**: Attempts to load the image data to detect deeper corruption issues
+Bad Image Finder uses a sophisticated multi-step approach to handle corrupt image files:
 
-This approach is more thorough than simple header checks, catching partially downloaded files, truncated images, and data corruption.
+### 🔎 Validation Process
 
-### Repair Process
-When repair mode is enabled, the tool attempts to fix corrupt images:
+<table>
+<tr>
+<td width="80" align="center">🧪</td>
+<td><b>Header Verification</b><br>Examines file headers to ensure they match proper image format specifications</td>
+</tr>
+<tr>
+<td align="center">🔬</td>
+<td><b>Data Validation</b><br>Attempts full data loading to detect issues beyond headers</td>
+</tr>
+<tr>
+<td align="center">📊</td>
+<td><b>Error Classification</b><br>Categorizes corruption issues for optimal repair strategy selection</td>
+</tr>
+</table>
 
-1. **Diagnosis**: Identifies the specific type of corruption (truncated data, invalid header, etc.)
-2. **Backup Creation**: Makes a backup of the original file (when backup directory is specified)
-3. **Repair Attempt**: Uses Pillow's error handling to try repairing the image:
-   - For truncated JPEG files, enables truncated image loading and re-saves the file
-   - For JPEG files with data issues, applies optimization and quality adjustments
-   - For PNG files with corruption, attempts to rescue and rebuild the file
-4. **Verification**: Checks if the repaired file is now valid
+This multi-layered approach catches a wide range of common image corruption problems:
+- Truncated downloads
+- Partially written files
+- Damaged headers
+- Internal data corruption
+- Invalid encoding
 
-Currently supported for repair: JPEG, PNG, and GIF formats
+### 🔧 Repair Process
 
-### Progress Saving
-For large collections, the tool saves progress periodically:
+When repair mode is enabled, the tool intelligently attempts to rescue damaged files:
 
-1. **Session Creation**: Generates a unique session ID based on scan parameters
-2. **Periodic Saving**: Automatically saves progress at specified intervals (default: 5 minutes)
-3. **Interrupt Handling**: Creates a resumable session on Ctrl+C interruption
-4. **Resumption**: Can continue from the exact point where a previous scan was interrupted
-5. **Session Management**: List, view details, and resume previous sessions
+<table>
+<tr>
+<td width="80" align="center">🔍</td>
+<td><b>Smart Diagnosis</b><br>Identifies the specific type and location of corruption</td>
+</tr>
+<tr>
+<td align="center">💾</td>
+<td><b>Safe Backup</b><br>Creates a backup of the original file before attempting repairs</td>
+</tr>
+<tr>
+<td align="center">🛠️</td>
+<td><b>Format-Specific Repair</b><br>Applies specialized techniques based on file format:
+<ul>
+<li><b>JPEG</b>: Handles truncation, enables partial loading, optimizes compression</li>
+<li><b>PNG</b>: Attempts chunk repair, rebuilds critical sections</li>
+<li><b>GIF</b>: Fixes frame data, repairs header structures</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td align="center">✅</td>
+<td><b>Validation Check</b><br>Verifies the repaired file is now properly loadable</td>
+</tr>
+</table>
+
+### ⏱️ Progress Saving System
+
+For large collections, an intelligent progress tracking system prevents wasted work:
+
+<table>
+<tr>
+<td width="80" align="center">🏷️</td>
+<td><b>Unique Session IDs</b><br>Generates cryptographic hashes based on scan parameters for reliable session tracking</td>
+</tr>
+<tr>
+<td align="center">⏰</td>
+<td><b>Automatic Checkpoints</b><br>Saves progress at regular intervals with minimal performance impact</td>
+</tr>
+<tr>
+<td align="center">🛑</td>
+<td><b>Interrupt Protection</b><br>Detects Ctrl+C and other interruptions, gracefully saves state before exit</td>
+</tr>
+<tr>
+<td align="center">⏯️</td>
+<td><b>Smart Resumption</b><br>Continues processing exactly where it left off, skipping already processed files</td>
+</tr>
+<tr>
+<td align="center">📋</td>
+<td><b>Session Management</b><br>Easy-to-use commands for listing, inspecting, and resuming past sessions</td>
+</tr>
+</table>
+
+<div align="center">
+<b>Supported Repair Formats:</b> JPEG, PNG, GIF
+</div>
 
 ## 📊 Performance
 
