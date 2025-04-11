@@ -5,6 +5,7 @@
 ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Colorful](https://img.shields.io/badge/output-colorful-orange)
 
 **A lightning-fast tool to find and clean up corrupt JPEG images from your photo collection.**
 
@@ -18,10 +19,10 @@
   - 🔍 **Dry Run** - Preview corrupt files with no changes (default)
   - 🗑️ **Delete** - Permanently remove corrupt files
   - 📦 **Move** - Relocate corrupt files to a separate directory
-- **Detailed Reporting**:
-  - Space savings calculation
-  - Processing speed metrics
-  - Organized logging
+- **Beautiful Interface**:
+  - 🌈 **Colorful Output** - Color-coded progress bars and logs
+  - 📊 **Visual Progress** - Real-time progress tracking with ETA
+  - 📈 **Rich Reporting** - Space savings and processing metrics
 - **Flexible Configuration**:
   - Control recursion depth
   - Adjust worker count
@@ -34,12 +35,13 @@
   - [Pillow](https://pillow.readthedocs.io/) - Python Imaging Library
   - [tqdm](https://github.com/tqdm/tqdm) - Progress bar
   - [humanize](https://github.com/jmoiron/humanize) - Human-readable metrics
+  - [colorama](https://github.com/tartley/colorama) - Cross-platform colored terminal output
 
 ## 🚀 Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/bad-jpg-finder.git
+git clone https://github.com/ricyoung/bad-jpg-finder.git
 cd bad-jpg-finder
 
 # Install dependencies
@@ -80,7 +82,7 @@ Safely relocates corrupt files to a separate directory for review.
 ```
 usage: find_bad_jpgs.py [-h] [--delete] [--move-to MOVE_TO] [--workers WORKERS]
                          [--non-recursive] [--output OUTPUT] [--verbose]
-                         directory
+                         [--no-color] directory
 
 positional arguments:
   directory         Directory to search for JPG files
@@ -93,6 +95,7 @@ optional arguments:
   --non-recursive   Only search in the specified directory, not subdirectories
   --output OUTPUT   Save list of corrupt files to this file
   --verbose, -v     Enable verbose logging
+  --no-color        Disable colored output (useful for logs or non-interactive terminals)
 ```
 
 ## 🔍 How It Works
@@ -136,6 +139,12 @@ This approach is more thorough than simple header checks, catching partially dow
 ./find_bad_jpgs.py /Volumes/ExternalDrive --delete --verbose
 ```
 
+### Disable colorful output for log files
+
+```bash
+./find_bad_jpgs.py /Volumes/Photos --output corrupt_photos.txt --no-color > logfile.txt
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Feel free to submit a Pull Request.
@@ -151,5 +160,7 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 ---
 
 <div align="center">
+<img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/preview.gif" alt="Bad JPG Finder in action" width="700">
+
 Made with ❤️ by your friendly neighborhood coder
 </div>
