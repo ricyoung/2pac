@@ -15,9 +15,12 @@ import json
 import shutil
 import pickle
 import hashlib
+import struct
+import tempfile
+import subprocess
 from datetime import datetime
 from pathlib import Path
-from PIL import Image, ImageFile
+from PIL import Image, ImageFile, UnidentifiedImageError
 from tqdm import tqdm
 import tqdm.auto as tqdm_auto
 import colorama
@@ -142,11 +145,106 @@ def diagnose_image_issue(file_path):
     except Exception as e:
         return "access_error", f"Error accessing file: {str(e)}"
 
-def is_valid_image(file_path):
+def check_jpeg_structure(file_path):
     """
-    Validate image file integrity using PIL.
+    Performs a deep check of JPEG file structure to find corruption that PIL might miss.
+    Returns (is_valid, error_message)
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            data = f.read()
+        
+        # Check for correct JPEG header (SOI marker)
+        if not data.startswith(b'\xFF\xD8'):
+            return False, "Invalid JPEG header (missing SOI marker)"
+        
+        # Check for proper EOI marker at the end
+        if not data.endswith(b'\xFF\xD9'):
+            return False, "Missing EOI marker at end of file"
+        
+        # Check for key JPEG segments
+        # SOF marker (Start of Frame) - At least one should be present
+        sof_markers = [b'\xFF\xC0', b'\xFF\xC1', b'\xFF\xC2', b'\xFF\xC3']
+        has_sof = any(marker in data for marker in sof_markers)
+        if not has_sof:
+            return False, "No Start of Frame (SOF) marker found"
+        
+        # Check for SOS marker (Start of Scan)
+        if b'\xFF\xDA' not in data:
+            return False, "No Start of Scan (SOS) marker found"
+        
+        # Scan through the file to check marker structure
+        i = 2  # Skip SOI marker
+        while i < len(data) - 1:
+            if data[i] == 0xFF and data[i+1] != 0x00 and data[i+1] != 0xFF:
+                # Found a marker
+                marker = data[i:i+2]
+                
+                # For markers with length fields, validate length
+                if (0xC0 <= data[i+1] <= 0xCF and data[i+1] != 0xC4 and data[i+1] != 0xC8) or \
+                   (0xDB <= data[i+1] <= 0xFE):
+                    if i + 4 >= len(data):
+                        return False, f"Truncated marker {data[i+1]:02X} at position {i}"
+                    length = struct.unpack('>H', data[i+2:i+4])[0]
+                    if i + 2 + length > len(data):
+                        return False, f"Invalid segment length for marker {data[i+1]:02X}"
+                    i += 2 + length
+                    continue
+            
+            # Move to next byte
+            i += 1
+                
+        return True, "JPEG structure appears valid"
+    except Exception as e:
+        return False, f"Error during JPEG structure check: {str(e)}"
+
+def try_external_tools(file_path):
+    """
+    Try using external tools to validate the image if they're available.
+    Returns (is_valid, message)
+    """
+    # Try using exiftool if available
+    try:
+        result = subprocess.run(['exiftool', '-m', '-p', '$Error', file_path], 
+                               capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            return False, f"Exiftool error: {result.stdout.strip()}"
+            
+        # Check with identify (ImageMagick) if available
+        result = subprocess.run(['identify', '-verbose', file_path], 
+                               capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            return False, "ImageMagick identify failed to read the image"
+            
+        return True, "Passed external tool validation"
+    except (subprocess.SubprocessError, FileNotFoundError):
+        # External tools not available or failed
+        return True, "External tools check skipped"
+
+def try_full_decode_check(file_path):
+    """
+    Try to fully decode the image to a temporary file.
+    This catches more subtle corruption that might otherwise be missed.
+    """
+    try:
+        # For JPEGs, try to decode and re-encode the image
+        with Image.open(file_path) as img:
+            # Create a temporary file for testing
+            with tempfile.NamedTemporaryFile(delete=True) as tmp:
+                # Try to save a decoded copy
+                img.save(tmp.name, format="BMP")
+                
+                # If we get here, the image data could be fully decoded
+                return True, "Full decode test passed"
+    except Exception as e:
+        return False, f"Full decode test failed: {str(e)}"
+
+def is_valid_image(file_path, thorough=True):
+    """
+    Validate image file integrity using multiple methods.
     Returns True if valid, False if corrupt.
     """
+    # Basic PIL validation first (fast check)
     try:
         with Image.open(file_path) as img:
             # verify() checks the file header
@@ -156,7 +254,32 @@ def is_valid_image(file_path):
             # This catches more corruption issues
             with Image.open(file_path) as img2:
                 img2.load()
-        return True
+                
+            # If thorough checking is disabled, return after basic check
+            if not thorough:
+                return True
+                
+            # For JPEG files, do additional structure checking
+            if file_path.lower().endswith(tuple(SUPPORTED_FORMATS['JPEG'])):
+                # Check JPEG structure
+                is_valid, error_msg = check_jpeg_structure(file_path)
+                if not is_valid:
+                    logging.debug(f"JPEG structure invalid for {file_path}: {error_msg}")
+                    return False
+                
+                # Try full decode test (catches subtle corruption)
+                is_valid, error_msg = try_full_decode_check(file_path)
+                if not is_valid:
+                    logging.debug(f"Full decode test failed for {file_path}: {error_msg}")
+                    return False
+                
+                # Try external tools if applicable
+                is_valid, error_msg = try_external_tools(file_path)
+                if not is_valid:
+                    logging.debug(f"External tool validation failed for {file_path}: {error_msg}")
+                    return False
+                    
+            return True
     except Exception as e:
         logging.debug(f"Invalid image {file_path}: {str(e)}")
         return False
@@ -235,10 +358,10 @@ def attempt_repair(file_path, backup_dir=None):
 
 def process_file(args):
     """Process a single image file."""
-    file_path, repair_mode, repair_dir = args
+    file_path, repair_mode, repair_dir, thorough_check = args
     
     # Check if the image is valid
-    is_valid = is_valid_image(file_path)
+    is_valid = is_valid_image(file_path, thorough=thorough_check)
     
     if not is_valid and repair_mode:
         # Try to repair the file
@@ -385,7 +508,8 @@ def find_image_files(directory, formats, recursive=True):
 
 def process_images(directory, formats, dry_run=True, repair=False, 
                   max_workers=None, recursive=True, move_to=None, repair_dir=None,
-                  save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR):
+                  save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR,
+                  thorough_check=False):
     """Find corrupt image files and optionally repair, delete, or move them."""
     start_time = time.time()
     
@@ -441,7 +565,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         logging.info(f"Created directory for backup files: {repair_dir}")
     
     # Prepare input arguments for workers
-    input_args = [(file_path, repair, repair_dir) for file_path in image_files]
+    input_args = [(file_path, repair, repair_dir, thorough_check) for file_path in image_files]
     
     # Process files in parallel
     logging.info("Processing files in parallel...")
@@ -570,6 +694,7 @@ def main():
     action_group = parser.add_mutually_exclusive_group()
     action_group.add_argument('directory', nargs='?', help='Directory to search for image files')
     action_group.add_argument('--list-sessions', action='store_true', help='List all saved sessions')
+    action_group.add_argument('--check-file', type=str, help='Check a specific file for corruption (useful for testing)')
     
     # Basic options
     parser.add_argument('--delete', action='store_true', help='Delete corrupt image files (without this flag, runs in dry-run mode)')
@@ -597,6 +722,11 @@ def main():
     format_group.add_argument('--gif', action='store_true', help='Check GIF files only')
     format_group.add_argument('--bmp', action='store_true', help='Check BMP files only')
     
+    # Validation options
+    validation_group = parser.add_argument_group('Validation options')
+    validation_group.add_argument('--thorough', action='store_true', 
+                                 help='Perform thorough image validation (slower but catches more subtle corruption)')
+    
     # Progress saving options
     progress_group = parser.add_argument_group('Progress options')
     progress_group.add_argument('--save-interval', type=int, default=5, 
@@ -610,6 +740,79 @@ def main():
     
     # Setup logging
     setup_logging(args.verbose, args.no_color)
+    
+    # Handle specific file check mode
+    if args.check_file:
+        file_path = args.check_file
+        if not os.path.exists(file_path):
+            logging.error(f"Error: File not found: {file_path}")
+            sys.exit(1)
+            
+        print(f"\n{colorama.Style.BRIGHT}Checking file: {file_path}{colorama.Style.RESET_ALL}\n")
+        
+        # Basic check
+        print(f"{colorama.Fore.CYAN}Basic validation:{colorama.Style.RESET_ALL}")
+        try:
+            with Image.open(file_path) as img:
+                print(f"✓ File can be opened by PIL")
+                print(f"  Format: {img.format}")
+                print(f"  Mode: {img.mode}")
+                print(f"  Size: {img.size[0]}x{img.size[1]}")
+                
+                try:
+                    img.verify()
+                    print(f"✓ Header verification passed")
+                except Exception as e:
+                    print(f"❌ Header verification failed: {str(e)}")
+                
+                try:
+                    with Image.open(file_path) as img2:
+                        img2.load()
+                    print(f"✓ Data loading test passed")
+                except Exception as e:
+                    print(f"❌ Data loading test failed: {str(e)}")
+        except Exception as e:
+            print(f"❌ Cannot open file with PIL: {str(e)}")
+        
+        # Detailed JPEG checks
+        if file_path.lower().endswith(tuple(SUPPORTED_FORMATS['JPEG'])):
+            print(f"\n{colorama.Fore.CYAN}JPEG structure checks:{colorama.Style.RESET_ALL}")
+            is_valid, msg = check_jpeg_structure(file_path)
+            if is_valid:
+                print(f"✓ JPEG structure valid: {msg}")
+            else:
+                print(f"❌ JPEG structure invalid: {msg}")
+        
+        # Decode test
+        print(f"\n{colorama.Fore.CYAN}Full decode test:{colorama.Style.RESET_ALL}")
+        is_valid, msg = try_full_decode_check(file_path)
+        if is_valid:
+            print(f"✓ Full decode test passed: {msg}")
+        else:
+            print(f"❌ Full decode test failed: {msg}")
+        
+        # External tools check
+        print(f"\n{colorama.Fore.CYAN}External tools check:{colorama.Style.RESET_ALL}")
+        is_valid, msg = try_external_tools(file_path)
+        if is_valid:
+            print(f"✓ External tools: {msg}")
+        else:
+            print(f"❌ External tools: {msg}")
+            
+        # Final verdict
+        print(f"\n{colorama.Fore.CYAN}Final verdict:{colorama.Style.RESET_ALL}")
+        is_valid_basic = is_valid_image(file_path, thorough=False)
+        is_valid_thorough = is_valid_image(file_path, thorough=True)
+        
+        if is_valid_basic and is_valid_thorough:
+            print(f"{colorama.Fore.GREEN}This file appears to be valid by all checks.{colorama.Style.RESET_ALL}")
+        elif is_valid_basic and not is_valid_thorough:
+            print(f"{colorama.Fore.YELLOW}This file passes basic validation but fails thorough checks.{colorama.Style.RESET_ALL}")
+            print(f"Recommendation: Use --thorough mode to detect this type of corruption.")
+        else:
+            print(f"{colorama.Fore.RED}This file is corrupt and would be detected by the basic scan.{colorama.Style.RESET_ALL}")
+            
+        sys.exit(0)
     
     # Handle session listing mode
     if args.list_sessions:
@@ -715,6 +918,10 @@ def main():
         resume_str = f"{colorama.Fore.CYAN}RESUMING{colorama.Style.RESET_ALL}: From session {args.resume}"
         logging.info(resume_str)
     
+    if args.thorough:
+        thorough_str = f"{colorama.Fore.MAGENTA}THOROUGH MODE{colorama.Style.RESET_ALL}: Using deep validation checks (slower but more accurate)"
+        logging.info(thorough_str)
+    
     # Show which formats we're checking
     format_list = ", ".join(formats)
     logging.info(f"Checking image formats: {format_list}")
@@ -732,7 +939,8 @@ def main():
             repair_dir=args.backup_dir,
             save_progress_interval=args.save_interval,
             resume_session=args.resume,
-            progress_dir=args.progress_dir
+            progress_dir=args.progress_dir,
+            thorough_check=args.thorough
         )
         
         # Colorful summary
