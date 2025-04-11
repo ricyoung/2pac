@@ -749,10 +749,24 @@ def process_images(directory, formats, dry_run=True, repair=False,
                 msg = f"Would delete: {file_path} ({size_str})"
                 logging.info(msg)
             elif move_to:
-                dest_path = os.path.join(move_to, os.path.basename(file_path))
+                # Preserve the subdirectory structure by getting the relative path from the search directory
                 try:
+                    # Get the relative path from the base directory
+                    rel_path = os.path.relpath(file_path, str(directory))
+                    # If relpath starts with ".." it means file_path is not within directory
+                    # In this case, just use the basename as fallback
+                    if rel_path.startswith('..'):
+                        dest_path = os.path.join(move_to, os.path.basename(file_path))
+                    else:
+                        # Create the full destination path preserving subdirectories
+                        dest_path = os.path.join(move_to, rel_path)
+                        
+                    # Create parent directories if they don't exist
+                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                    
                     # Use shutil.move instead of os.rename to handle cross-device file movements
                     shutil.move(file_path, dest_path)
+                    
                     # Add arrow with color
                     arrow = f"{colorama.Fore.CYAN}→{colorama.Style.RESET_ALL}"
                     msg = f"Moved: {file_path} {arrow} {dest_path} ({size_str})"

@@ -123,6 +123,8 @@ This performs a dry run, showing which files would be deleted without making cha
 
 Safely relocates corrupt files to a separate directory for review instead of deleting them. Use this as an alternative to `--delete` when you want to examine corrupt files before permanently removing them.
 
+The directory structure from the original location is preserved in the destination folder, making it easier to understand where files came from and preventing filename collisions.
+
 ### Filter By Format
 
 ```bash
@@ -422,6 +424,14 @@ For large collections, an intelligent progress tracking system prevents wasted w
 
 # Combine options for specific use cases
 ./find_bad_images.py /Volumes/Photos --sensitivity high --ignore-eof --verbose
+```
+
+### Cross-device operations
+
+```bash
+# Move corrupt files from an external drive to a local folder while preserving structure
+./find_bad_images.py /Volumes/ExternalDrive --move-to ~/Desktop/corrupted
+# Result: Files like '/Volumes/ExternalDrive/folder1/subfolder/image.jpg' will be moved to '~/Desktop/corrupted/folder1/subfolder/image.jpg'
 ```
 
 ## 🎚️ New Validation System
