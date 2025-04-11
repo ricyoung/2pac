@@ -121,7 +121,7 @@ This performs a dry run, showing which files would be deleted without making cha
 ./find_bad_images.py /path/to/images --move-to /path/to/corrupt_folder
 ```
 
-Safely relocates corrupt files to a separate directory for review.
+Safely relocates corrupt files to a separate directory for review instead of deleting them. Use this as an alternative to `--delete` when you want to examine corrupt files before permanently removing them.
 
 ### Filter By Format
 
@@ -144,7 +144,15 @@ Safely relocates corrupt files to a separate directory for review.
 
 # Repair and save a report of fixed files
 ./find_bad_images.py /path/to/images --repair --repair-report repaired_files.txt
+
+# Repair and move files that couldn't be repaired
+./find_bad_images.py /path/to/images --repair --backup-dir /path/to/backups --move-to /path/to/still_corrupt
 ```
+
+**Important Notes:**
+- `--backup-dir` is used with `--repair` to save original versions of files **before** attempting repairs
+- `--move-to` is used to relocate corrupt files that were found (or couldn't be repaired) to another location
+- These options serve different purposes: one preserves originals before repair, the other handles corrupt files
 
 ### Progress Saving and Resuming
 
