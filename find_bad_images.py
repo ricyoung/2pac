@@ -751,7 +751,8 @@ def process_images(directory, formats, dry_run=True, repair=False,
             elif move_to:
                 dest_path = os.path.join(move_to, os.path.basename(file_path))
                 try:
-                    os.rename(file_path, dest_path)
+                    # Use shutil.move instead of os.rename to handle cross-device file movements
+                    shutil.move(file_path, dest_path)
                     # Add arrow with color
                     arrow = f"{colorama.Fore.CYAN}→{colorama.Style.RESET_ALL}"
                     msg = f"Moved: {file_path} {arrow} {dest_path} ({size_str})"
