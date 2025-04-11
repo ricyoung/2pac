@@ -1,0 +1,22 @@
+# Image files
+*.jpg
+*.jpeg
+*.JPG
+*.JPEG
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
