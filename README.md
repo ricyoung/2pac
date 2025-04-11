@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Colorful](https://img.shields.io/badge/output-colorful-orange)
@@ -29,6 +29,7 @@
   - 🔍 **Dry Run** - Preview corrupt files with no changes (default)
   - 🗑️ **Delete** - Permanently remove corrupt files
   - 📦 **Move** - Relocate corrupt files to a separate directory
+  - 🔧 **Repair** - Attempt to fix corrupted images
 - **Beautiful Interface**:
   - 🌈 **Colorful Output** - Color-coded progress bars and logs
   - 📊 **Visual Progress** - Real-time progress tracking with ETA
@@ -101,12 +102,24 @@ Safely relocates corrupt files to a separate directory for review.
 ./find_bad_images.py /path/to/images --formats JPEG PNG TIFF
 ```
 
+### Repair Mode
+
+```bash
+# Attempt to repair corrupt images (creates backups first)
+./find_bad_images.py /path/to/images --repair --backup-dir /path/to/backups
+
+# Repair and save a report of fixed files
+./find_bad_images.py /path/to/images --repair --repair-report repaired_files.txt
+```
+
 ### All Options
 
 ```
 usage: find_bad_images.py [-h] [--delete] [--move-to MOVE_TO] [--workers WORKERS]
                           [--non-recursive] [--output OUTPUT] [--verbose]
-                          [--no-color] [--formats {JPEG,PNG,GIF,TIFF,BMP,WEBP,ICO,HEIC} [...]]
+                          [--no-color] [--version] [--repair] [--backup-dir BACKUP_DIR]
+                          [--repair-report REPAIR_REPORT]
+                          [--formats {JPEG,PNG,GIF,TIFF,BMP,WEBP,ICO,HEIC} [...]]
                           [--jpeg] [--png] [--tiff] [--gif] [--bmp]
                           directory
 
@@ -122,25 +135,47 @@ optional arguments:
   --output OUTPUT   Save list of corrupt files to this file
   --verbose, -v     Enable verbose logging
   --no-color        Disable colored output (useful for logs or non-interactive terminals)
+  --version         Show program's version number and exit
+
+Repair options:
+  --repair          Attempt to repair corrupt image files
+  --backup-dir BACKUP_DIR
+                    Directory to store backups of files before repair
+  --repair-report REPAIR_REPORT
+                    Save list of repaired files to this file
 
 Image format options:
   --formats {JPEG,PNG,GIF,TIFF,BMP,WEBP,ICO,HEIC} [...]
-                        Image formats to check (default: all formats)
-  --jpeg               Check JPEG files only
-  --png                Check PNG files only
-  --tiff               Check TIFF files only
-  --gif                Check GIF files only
-  --bmp                Check BMP files only
+                    Image formats to check (default: all formats)
+  --jpeg            Check JPEG files only
+  --png             Check PNG files only
+  --tiff            Check TIFF files only
+  --gif             Check GIF files only
+  --bmp             Check BMP files only
 ```
 
 ## 🔍 How It Works
 
-Bad Image Finder uses a two-step validation process to catch different types of image corruption:
+Bad Image Finder uses a multi-step approach to handle corrupt image files:
 
+### Validation Process
 1. **Header Verification**: Checks if the file has a valid image header structure
 2. **Data Validation**: Attempts to load the image data to detect deeper corruption issues
 
 This approach is more thorough than simple header checks, catching partially downloaded files, truncated images, and data corruption.
+
+### Repair Process
+When repair mode is enabled, the tool attempts to fix corrupt images:
+
+1. **Diagnosis**: Identifies the specific type of corruption (truncated data, invalid header, etc.)
+2. **Backup Creation**: Makes a backup of the original file (when backup directory is specified)
+3. **Repair Attempt**: Uses Pillow's error handling to try repairing the image:
+   - For truncated JPEG files, enables truncated image loading and re-saves the file
+   - For JPEG files with data issues, applies optimization and quality adjustments
+   - For PNG files with corruption, attempts to rescue and rebuild the file
+4. **Verification**: Checks if the repaired file is now valid
+
+Currently supported for repair: JPEG, PNG, and GIF formats
 
 ## 📊 Performance
 
@@ -184,6 +219,12 @@ This approach is more thorough than simple header checks, catching partially dow
 
 ```bash
 ./find_bad_images.py /Volumes/Photos --formats JPEG TIFF
+```
+
+### Repair corrupted images from a camera memory card
+
+```bash
+./find_bad_images.py /Volumes/MEMORY_CARD --repair --backup-dir ~/Desktop/image_backups --verbose
 ```
 
 ## 🤝 Contributing
