@@ -11,7 +11,11 @@ import concurrent.futures
 import sys
 import time
 import io
+import json
 import shutil
+import pickle
+import hashlib
+from datetime import datetime
 from pathlib import Path
 from PIL import Image, ImageFile
 from tqdm import tqdm
@@ -43,6 +47,12 @@ DEFAULT_FORMATS = list(SUPPORTED_FORMATS.keys())
 
 # List of formats that can potentially be repaired
 REPAIRABLE_FORMATS = ['JPEG', 'PNG', 'GIF']
+
+# Default progress directory
+DEFAULT_PROGRESS_DIR = os.path.expanduser("~/.bad_image_finder/progress")
+
+# Current version
+VERSION = "1.3.0"
 
 def setup_logging(verbose, no_color=False):
     level = logging.DEBUG if verbose else logging.INFO
@@ -246,6 +256,100 @@ def process_file(args):
         size = os.path.getsize(file_path) if not is_valid else 0
         return file_path, is_valid, size, "not_repaired", None, None
 
+def get_session_id(directory, formats, recursive):
+    """Generate a unique session ID based on scan parameters."""
+    # Create a unique identifier for this scan session
+    dir_path = str(directory).encode('utf-8')
+    formats_str = ",".join(sorted(formats)).encode('utf-8')
+    recursive_str = str(recursive).encode('utf-8')
+    
+    # Create a hash of the parameters
+    hash_obj = hashlib.md5()
+    hash_obj.update(dir_path)
+    hash_obj.update(formats_str)
+    hash_obj.update(recursive_str)
+    
+    return hash_obj.hexdigest()[:12]  # Use first 12 chars of hash
+
+def save_progress(session_id, directory, formats, recursive, processed_files, 
+                 bad_files, repaired_files, progress_dir=DEFAULT_PROGRESS_DIR):
+    """Save the current progress to a file."""
+    # Create progress directory if it doesn't exist
+    if not os.path.exists(progress_dir):
+        os.makedirs(progress_dir, exist_ok=True)
+    
+    # Create a progress state object
+    progress_state = {
+        'version': VERSION,
+        'timestamp': datetime.now().isoformat(),
+        'directory': str(directory),
+        'formats': formats,
+        'recursive': recursive,
+        'processed_files': processed_files,
+        'bad_files': bad_files,
+        'repaired_files': repaired_files
+    }
+    
+    # Save to file
+    progress_file = os.path.join(progress_dir, f"session_{session_id}.progress")
+    with open(progress_file, 'wb') as f:
+        pickle.dump(progress_state, f)
+    
+    logging.debug(f"Progress saved to {progress_file}")
+    return progress_file
+
+def load_progress(session_id, progress_dir=DEFAULT_PROGRESS_DIR):
+    """Load progress from a saved session."""
+    progress_file = os.path.join(progress_dir, f"session_{session_id}.progress")
+    
+    if not os.path.exists(progress_file):
+        return None
+    
+    try:
+        with open(progress_file, 'rb') as f:
+            progress_state = pickle.load(f)
+            
+        # Check version compatibility
+        if progress_state.get('version', '0.0.0') != VERSION:
+            logging.warning("Progress file was created with a different version. Some incompatibilities may exist.")
+            
+        logging.info(f"Loaded progress from {progress_file}")
+        return progress_state
+    except Exception as e:
+        logging.error(f"Failed to load progress: {str(e)}")
+        return None
+
+def list_saved_sessions(progress_dir=DEFAULT_PROGRESS_DIR):
+    """List all saved sessions with their details."""
+    if not os.path.exists(progress_dir):
+        return []
+    
+    sessions = []
+    for filename in os.listdir(progress_dir):
+        if filename.endswith('.progress'):
+            try:
+                filepath = os.path.join(progress_dir, filename)
+                with open(filepath, 'rb') as f:
+                    progress_state = pickle.load(f)
+                
+                session_info = {
+                    'id': filename.replace('session_', '').replace('.progress', ''),
+                    'timestamp': progress_state.get('timestamp', 'Unknown'),
+                    'directory': progress_state.get('directory', 'Unknown'),
+                    'formats': progress_state.get('formats', []),
+                    'processed_count': len(progress_state.get('processed_files', [])),
+                    'bad_count': len(progress_state.get('bad_files', [])),
+                    'repaired_count': len(progress_state.get('repaired_files', [])),
+                    'filepath': filepath
+                }
+                sessions.append(session_info)
+            except Exception as e:
+                logging.debug(f"Failed to load session from {filename}: {str(e)}")
+    
+    # Sort by timestamp, newest first
+    sessions.sort(key=lambda x: x['timestamp'], reverse=True)
+    return sessions
+
 def get_extensions_for_formats(formats):
     """Get all file extensions for the specified formats."""
     extensions = []
@@ -280,18 +384,52 @@ def find_image_files(directory, formats, recursive=True):
     return image_files
 
 def process_images(directory, formats, dry_run=True, repair=False, 
-                  max_workers=None, recursive=True, move_to=None, repair_dir=None):
+                  max_workers=None, recursive=True, move_to=None, repair_dir=None,
+                  save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR):
     """Find corrupt image files and optionally repair, delete, or move them."""
     start_time = time.time()
+    
+    # Generate session ID for this scan
+    session_id = get_session_id(directory, formats, recursive)
+    processed_files = []
     bad_files = []
     repaired_files = []
     total_size_saved = 0
+    last_progress_save = time.time()
+    
+    # If resuming, load previous progress
+    if resume_session:
+        try:
+            progress = load_progress(resume_session, progress_dir)
+            if progress and progress['directory'] == str(directory) and progress['formats'] == formats:
+                processed_files = progress['processed_files']
+                bad_files = progress['bad_files']
+                repaired_files = progress['repaired_files']
+                logging.info(f"Resuming session: {len(processed_files)} files already processed")
+            else:
+                if progress:
+                    logging.warning("Session parameters don't match current parameters. Starting fresh scan.")
+                else:
+                    logging.warning(f"Couldn't find session {resume_session}. Starting fresh scan.")
+        except Exception as e:
+            logging.error(f"Error loading session: {str(e)}. Starting fresh scan.")
     
     # Find all image files
     image_files = find_image_files(directory, formats, recursive)
     if not image_files:
         logging.warning("No image files found!")
         return [], [], 0
+    
+    # Filter out already processed files if resuming
+    if processed_files:
+        remaining_files = [f for f in image_files if f not in processed_files]
+        skipped_count = len(image_files) - len(remaining_files)
+        image_files = remaining_files
+        logging.info(f"Skipping {skipped_count} already processed files")
+        
+    if not image_files:
+        logging.info("All files have already been processed in the previous session!")
+        return bad_files, repaired_files, total_size_saved
         
     # Create directories if they don't exist
     if move_to and not os.path.exists(move_to):
@@ -307,28 +445,83 @@ def process_images(directory, formats, dry_run=True, repair=False,
     
     # Process files in parallel
     logging.info("Processing files in parallel...")
-    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        # Colorful progress bar
-        results = list(tqdm_auto.tqdm(
-            executor.map(process_file, input_args),
-            total=len(image_files),
-            desc=f"{colorama.Fore.BLUE}Checking image files{colorama.Style.RESET_ALL}",
-            unit="file",
-            bar_format="{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
-            colour="blue"
-        ))
+    
+    # Create a custom progress bar class that saves progress periodically
+    class ProgressSavingBar(tqdm_auto.tqdm):
+        def update(self, n=1):
+            nonlocal last_progress_save, processed_files
+            result = super().update(n)
+            
+            # Save progress periodically
+            current_time = time.time()
+            if save_progress_interval > 0 and current_time - last_progress_save >= save_progress_interval * 60:
+                # Get processed files up to the current position
+                newly_processed = image_files[:self.n]
+                processed_files.extend(newly_processed)
+                
+                # Save the progress
+                save_progress(session_id, directory, formats, recursive, 
+                             processed_files, bad_files, repaired_files, progress_dir)
+                
+                last_progress_save = current_time
+                logging.debug(f"Progress saved at {self.n} / {len(image_files)} files")
+            
+            return result
+    
+    try:
+        with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+            # Colorful progress bar with progress saving
+            results = []
+            futures = {executor.submit(process_file, arg): arg[0] for arg in input_args}
+            
+            with ProgressSavingBar(
+                total=len(image_files),
+                desc=f"{colorama.Fore.BLUE}Checking image files{colorama.Style.RESET_ALL}",
+                unit="file",
+                bar_format="{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+                colour="blue"
+            ) as pbar:
+                for future in concurrent.futures.as_completed(futures):
+                    file_path = futures[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                        
+                        # Track this file as processed for resuming later if needed
+                        processed_files.append(file_path)
+                        
+                        # Update progress for successful or failed processing
+                        pbar.update(1)
+                        
+                        # Update our tracking of bad/repaired files in real-time for progress saving
+                        file_path, is_valid, size, repair_status, repair_msg, dimensions = result
+                        if repair_status == "repaired":
+                            repaired_files.append(file_path)
+                        elif not is_valid:
+                            bad_files.append(file_path)
+                        
+                    except Exception as e:
+                        logging.error(f"Error processing {file_path}: {str(e)}")
+                        pbar.update(1)
+    except KeyboardInterrupt:
+        # If the user interrupts, save progress before exiting
+        logging.warning("Process interrupted by user. Saving progress...")
+        save_progress(session_id, directory, formats, recursive, 
+                     processed_files, bad_files, repaired_files, progress_dir)
+        logging.info(f"Progress saved. You can resume with --resume {session_id}")
+        raise
     
     # Process results
+    total_size_saved = 0
     for file_path, is_valid, size, repair_status, repair_msg, dimensions in results:
         if repair_status == "repaired":
-            # File was successfully repaired
-            repaired_files.append(file_path)
+            # File was successfully repaired (already added to repaired_files during processing)
             width, height = dimensions
             msg = f"Repaired: {file_path} ({width}x{height}) - {repair_msg}"
             logging.info(msg)
         elif not is_valid:
             # File is corrupt and wasn't repaired (or repair failed)
-            bad_files.append(file_path)
+            # (already added to bad_files during processing)
             total_size_saved += size
             
             size_str = humanize.naturalsize(size)
@@ -357,8 +550,13 @@ def process_images(directory, formats, dry_run=True, repair=False,
                 except Exception as e:
                     logging.error(f"Failed to delete {file_path}: {e}")
     
+    # Final progress save
+    save_progress(session_id, directory, formats, recursive, 
+                 processed_files, bad_files, repaired_files, progress_dir)
+    
     elapsed = time.time() - start_time
-    logging.info(f"Processed {len(image_files)} files in {elapsed:.2f} seconds")
+    logging.info(f"Processed {len(processed_files)} files in {elapsed:.2f} seconds")
+    logging.info(f"Session ID: {session_id} (use --resume {session_id} to resume if needed)")
     
     return bad_files, repaired_files, total_size_saved
 
@@ -367,7 +565,13 @@ def main():
         description='Find, repair, and manage corrupt image files',
         epilog='Created by Richard Young - https://github.com/ricyoung/bad-jpg-finder'
     )
-    parser.add_argument('directory', help='Directory to search for image files')
+    
+    # Main action (mutually exclusive)
+    action_group = parser.add_mutually_exclusive_group()
+    action_group.add_argument('directory', nargs='?', help='Directory to search for image files')
+    action_group.add_argument('--list-sessions', action='store_true', help='List all saved sessions')
+    
+    # Basic options
     parser.add_argument('--delete', action='store_true', help='Delete corrupt image files (without this flag, runs in dry-run mode)')
     parser.add_argument('--move-to', type=str, help='Move corrupt files to this directory instead of deleting them')
     parser.add_argument('--workers', type=int, default=None, help='Number of worker processes (default: CPU count)')
@@ -375,7 +579,7 @@ def main():
     parser.add_argument('--output', type=str, help='Save list of corrupt files to this file')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
     parser.add_argument('--no-color', action='store_true', help='Disable colored output')
-    parser.add_argument('--version', action='version', version='Bad Image Finder v1.2.0 by Richard Young')
+    parser.add_argument('--version', action='version', version=f'Bad Image Finder v{VERSION} by Richard Young')
     
     # Repair options
     repair_group = parser.add_argument_group('Repair options')
@@ -393,14 +597,65 @@ def main():
     format_group.add_argument('--gif', action='store_true', help='Check GIF files only')
     format_group.add_argument('--bmp', action='store_true', help='Check BMP files only')
     
+    # Progress saving options
+    progress_group = parser.add_argument_group('Progress options')
+    progress_group.add_argument('--save-interval', type=int, default=5, 
+                              help='Save progress every N minutes (0 to disable progress saving)')
+    progress_group.add_argument('--progress-dir', type=str, default=DEFAULT_PROGRESS_DIR,
+                               help='Directory to store progress files')
+    progress_group.add_argument('--resume', type=str, metavar='SESSION_ID',
+                              help='Resume from a previously saved session')
+    
     args = parser.parse_args()
     
     # Setup logging
     setup_logging(args.verbose, args.no_color)
     
-    directory = Path(args.directory)
+    # Handle session listing mode
+    if args.list_sessions:
+        sessions = list_saved_sessions(args.progress_dir)
+        if sessions:
+            print(f"\n{colorama.Style.BRIGHT}Saved Sessions:{colorama.Style.RESET_ALL}")
+            for i, session in enumerate(sessions):
+                ts = datetime.fromisoformat(session['timestamp']).strftime('%Y-%m-%d %H:%M:%S')
+                print(f"\n{colorama.Fore.CYAN}Session ID: {session['id']}{colorama.Style.RESET_ALL}")
+                print(f"  Created: {ts}")
+                print(f"  Directory: {session['directory']}")
+                print(f"  Formats: {', '.join(session['formats'])}")
+                print(f"  Progress: {session['processed_count']} files processed, "
+                      f"{session['bad_count']} corrupt, {session['repaired_count']} repaired")
+                
+                # Show resume command
+                resume_cmd = f"find_bad_images.py --resume {session['id']}"
+                if os.path.exists(session['directory']):
+                    print(f"  {colorama.Fore.GREEN}Resume command: {resume_cmd}{colorama.Style.RESET_ALL}")
+                else:
+                    print(f"  {colorama.Fore.YELLOW}Directory no longer exists, cannot resume{colorama.Style.RESET_ALL}")
+        else:
+            print("No saved sessions found.")
+        sys.exit(0)
+    
+    # Check if directory is specified for a new scan
+    if not args.directory and not args.resume:
+        logging.error("Error: You must specify a directory to scan or use --resume to continue a session")
+        sys.exit(1)
+    
+    # If we're resuming without a directory, load from previous session
+    directory = None
+    if args.resume and not args.directory:
+        progress = load_progress(args.resume, args.progress_dir)
+        if progress:
+            directory = Path(progress['directory'])
+            logging.info(f"Using directory from saved session: {directory}")
+        else:
+            logging.error(f"Could not load session {args.resume}")
+            sys.exit(1)
+    elif args.directory:
+        directory = Path(args.directory)
+    
+    # Verify the directory exists
     if not directory.exists() or not directory.is_dir():
-        logging.error(f"Error: {args.directory} is not a valid directory")
+        logging.error(f"Error: {directory} is not a valid directory")
         sys.exit(1)
     
     # Check for incompatible options
@@ -449,6 +704,17 @@ def main():
         mode_str = f"{colorama.Fore.RED}DELETE MODE{colorama.Style.RESET_ALL}: Corrupt files will be permanently deleted"
         logging.info(mode_str)
     
+    # Add progress saving info
+    if args.save_interval > 0:
+        save_interval_str = f"{colorama.Fore.CYAN}PROGRESS SAVING{colorama.Style.RESET_ALL}: Every {args.save_interval} minutes"
+        logging.info(save_interval_str)
+    else:
+        logging.info("Progress saving is disabled")
+    
+    if args.resume:
+        resume_str = f"{colorama.Fore.CYAN}RESUMING{colorama.Style.RESET_ALL}: From session {args.resume}"
+        logging.info(resume_str)
+    
     # Show which formats we're checking
     format_list = ", ".join(formats)
     logging.info(f"Checking image formats: {format_list}")
@@ -463,7 +729,10 @@ def main():
             max_workers=args.workers,
             recursive=not args.non_recursive,
             move_to=args.move_to,
-            repair_dir=args.backup_dir
+            repair_dir=args.backup_dir,
+            save_progress_interval=args.save_interval,
+            resume_session=args.resume,
+            progress_dir=args.progress_dir
         )
         
         # Colorful summary
@@ -489,7 +758,7 @@ def main():
         
         if not args.no_color:
             # Add signature at the end of the run
-            signature = f"\n{colorama.Fore.CYAN}Bad Image Finder v1.2.0 by Richard Young{colorama.Style.RESET_ALL}"
+            signature = f"\n{colorama.Fore.CYAN}Bad Image Finder v{VERSION} by Richard Young{colorama.Style.RESET_ALL}"
             print(signature)
         
         # Save list of corrupt files if requested

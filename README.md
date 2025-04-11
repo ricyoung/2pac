@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Colorful](https://img.shields.io/badge/output-colorful-orange)
@@ -30,6 +30,7 @@
   - 🗑️ **Delete** - Permanently remove corrupt files
   - 📦 **Move** - Relocate corrupt files to a separate directory
   - 🔧 **Repair** - Attempt to fix corrupted images
+  - ⏸️ **Resume** - Continue interrupted scans from where they left off
 - **Beautiful Interface**:
   - 🌈 **Colorful Output** - Color-coded progress bars and logs
   - 📊 **Visual Progress** - Real-time progress tracking with ETA
@@ -112,22 +113,41 @@ Safely relocates corrupt files to a separate directory for review.
 ./find_bad_images.py /path/to/images --repair --repair-report repaired_files.txt
 ```
 
+### Progress Saving and Resuming
+
+```bash
+# List all saved sessions
+./find_bad_images.py --list-sessions
+
+# Resume a previously interrupted session
+./find_bad_images.py --resume abc123def456
+
+# Customize progress saving interval (default: 5 minutes)
+./find_bad_images.py /path/to/images --save-interval 10
+
+# Disable progress saving
+./find_bad_images.py /path/to/images --save-interval 0
+```
+
 ### All Options
 
 ```
-usage: find_bad_images.py [-h] [--delete] [--move-to MOVE_TO] [--workers WORKERS]
-                          [--non-recursive] [--output OUTPUT] [--verbose]
-                          [--no-color] [--version] [--repair] [--backup-dir BACKUP_DIR]
-                          [--repair-report REPAIR_REPORT]
+usage: find_bad_images.py [-h] [--list-sessions] [--delete] [--move-to MOVE_TO]
+                          [--workers WORKERS] [--non-recursive] [--output OUTPUT]
+                          [--verbose] [--no-color] [--version] [--repair]
+                          [--backup-dir BACKUP_DIR] [--repair-report REPAIR_REPORT]
                           [--formats {JPEG,PNG,GIF,TIFF,BMP,WEBP,ICO,HEIC} [...]]
                           [--jpeg] [--png] [--tiff] [--gif] [--bmp]
-                          directory
+                          [--save-interval SAVE_INTERVAL] [--progress-dir PROGRESS_DIR]
+                          [--resume SESSION_ID]
+                          [directory]
 
 positional arguments:
   directory         Directory to search for image files
 
 optional arguments:
   -h, --help        Show this help message and exit
+  --list-sessions   List all saved sessions
   --delete          Delete corrupt image files (without this flag, runs in dry-run mode)
   --move-to MOVE_TO Move corrupt files to this directory instead of deleting them
   --workers WORKERS Number of worker processes (default: CPU count)
@@ -152,6 +172,14 @@ Image format options:
   --tiff            Check TIFF files only
   --gif             Check GIF files only
   --bmp             Check BMP files only
+
+Progress options:
+  --save-interval SAVE_INTERVAL
+                    Save progress every N minutes (0 to disable progress saving, default: 5)
+  --progress-dir PROGRESS_DIR
+                    Directory to store progress files
+  --resume SESSION_ID
+                    Resume from a previously saved session
 ```
 
 ## 🔍 How It Works
@@ -176,6 +204,15 @@ When repair mode is enabled, the tool attempts to fix corrupt images:
 4. **Verification**: Checks if the repaired file is now valid
 
 Currently supported for repair: JPEG, PNG, and GIF formats
+
+### Progress Saving
+For large collections, the tool saves progress periodically:
+
+1. **Session Creation**: Generates a unique session ID based on scan parameters
+2. **Periodic Saving**: Automatically saves progress at specified intervals (default: 5 minutes)
+3. **Interrupt Handling**: Creates a resumable session on Ctrl+C interruption
+4. **Resumption**: Can continue from the exact point where a previous scan was interrupted
+5. **Session Management**: List, view details, and resume previous sessions
 
 ## 📊 Performance
 
@@ -225,6 +262,19 @@ Currently supported for repair: JPEG, PNG, and GIF formats
 
 ```bash
 ./find_bad_images.py /Volumes/MEMORY_CARD --repair --backup-dir ~/Desktop/image_backups --verbose
+```
+
+### Process a huge image collection with resumable progress
+
+```bash
+# Start processing a large image collection
+./find_bad_images.py /Volumes/BigStorage --save-interval 10
+
+# If interrupted, list available sessions
+./find_bad_images.py --list-sessions
+
+# Resume from where you left off
+./find_bad_images.py --resume abc123def456
 ```
 
 ## 🤝 Contributing
