@@ -8,15 +8,49 @@ import time
 from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
+import tqdm.auto as tqdm_auto
+from tqdm.contrib import trange
+import colorama
 import humanize
 import logging
 
-def setup_logging(verbose):
+# Initialize colorama (required for Windows)
+colorama.init()
+
+def setup_logging(verbose, no_color=False):
     level = logging.DEBUG if verbose else logging.INFO
+    
+    # Define color codes
+    if not no_color:
+        # Color scheme
+        COLORS = {
+            'DEBUG': colorama.Fore.CYAN,
+            'INFO': colorama.Fore.GREEN,
+            'WARNING': colorama.Fore.YELLOW,
+            'ERROR': colorama.Fore.RED,
+            'CRITICAL': colorama.Fore.MAGENTA + colorama.Style.BRIGHT,
+            'RESET': colorama.Style.RESET_ALL
+        }
+        
+        # Custom formatter with colors
+        class ColoredFormatter(logging.Formatter):
+            def format(self, record):
+                levelname = record.levelname
+                if levelname in COLORS:
+                    record.levelname = f"{COLORS[levelname]}{levelname}{COLORS['RESET']}"
+                    record.msg = f"{COLORS[levelname]}{record.msg}{COLORS['RESET']}"
+                return super().format(record)
+                
+        formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    else:
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        
+    handler = logging.StreamHandler()
+    handler.setFormatter(formatter)
+    
     logging.basicConfig(
         level=level,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[logging.StreamHandler()]
+        handlers=[handler]
     )
 
 def is_valid_jpg(file_path):
@@ -79,11 +113,14 @@ def find_bad_jpgs(directory, dry_run=True, max_workers=None, recursive=True, mov
     # Process files in parallel
     logging.info("Processing files in parallel...")
     with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
-        results = list(tqdm(
+        # Colorful progress bar
+        results = list(tqdm_auto.tqdm(
             executor.map(process_file, jpg_files),
             total=len(jpg_files),
-            desc="Checking JPG files",
-            unit="file"
+            desc=f"{colorama.Fore.BLUE}Checking JPG files{colorama.Style.RESET_ALL}",
+            unit="file",
+            bar_format="{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}]",
+            colour="blue"
         ))
     
     # Process results
@@ -92,19 +129,25 @@ def find_bad_jpgs(directory, dry_run=True, max_workers=None, recursive=True, mov
             bad_files.append(file_path)
             total_size_saved += size
             
+            size_str = humanize.naturalsize(size)
             if dry_run:
-                logging.info(f"Would delete: {file_path} ({humanize.naturalsize(size)})")
+                msg = f"Would delete: {file_path} ({size_str})"
+                logging.info(msg)
             elif move_to:
                 dest_path = os.path.join(move_to, os.path.basename(file_path))
                 try:
                     os.rename(file_path, dest_path)
-                    logging.info(f"Moved: {file_path} → {dest_path} ({humanize.naturalsize(size)})")
+                    # Add arrow with color
+                    arrow = f"{colorama.Fore.CYAN}→{colorama.Style.RESET_ALL}"
+                    msg = f"Moved: {file_path} {arrow} {dest_path} ({size_str})"
+                    logging.info(msg)
                 except Exception as e:
                     logging.error(f"Failed to move {file_path}: {e}")
             else:
                 try:
                     os.remove(file_path)
-                    logging.info(f"Deleted: {file_path} ({humanize.naturalsize(size)})")
+                    msg = f"Deleted: {file_path} ({size_str})"
+                    logging.info(msg)
                 except Exception as e:
                     logging.error(f"Failed to delete {file_path}: {e}")
     
@@ -122,10 +165,11 @@ def main():
     parser.add_argument('--non-recursive', action='store_true', help='Only search in the specified directory, not subdirectories')
     parser.add_argument('--output', type=str, help='Save list of corrupt files to this file')
     parser.add_argument('--verbose', '-v', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--no-color', action='store_true', help='Disable colored output')
     args = parser.parse_args()
     
     # Setup logging
-    setup_logging(args.verbose)
+    setup_logging(args.verbose, args.no_color)
     
     directory = Path(args.directory)
     if not directory.exists() or not directory.is_dir():
@@ -139,12 +183,16 @@ def main():
     
     dry_run = not (args.delete or args.move_to)
     
+    # Colorful mode indicators
     if dry_run:
-        logging.info(f"DRY RUN MODE: No files will be deleted or moved")
+        mode_str = f"{colorama.Fore.YELLOW}DRY RUN MODE{colorama.Style.RESET_ALL}: No files will be deleted or moved"
+        logging.info(mode_str)
     elif args.move_to:
-        logging.info(f"MOVE MODE: Corrupt files will be moved to {args.move_to}")
+        mode_str = f"{colorama.Fore.BLUE}MOVE MODE{colorama.Style.RESET_ALL}: Corrupt files will be moved to {args.move_to}"
+        logging.info(mode_str)
     else:
-        logging.info(f"DELETE MODE: Corrupt files will be permanently deleted")
+        mode_str = f"{colorama.Fore.RED}DELETE MODE{colorama.Style.RESET_ALL}: Corrupt files will be permanently deleted"
+        logging.info(mode_str)
     
     logging.info(f"Searching for corrupt JPG files in {directory}")
     
@@ -157,8 +205,15 @@ def main():
             move_to=args.move_to
         )
         
-        logging.info(f"Found {len(bad_files)} corrupt JPG files")
-        logging.info(f"Total space savings: {humanize.naturalsize(total_size_saved)}")
+        # Colorful summary
+        count_color = colorama.Fore.RED if bad_files else colorama.Fore.GREEN
+        file_count = f"{count_color}{len(bad_files)}{colorama.Style.RESET_ALL}"
+        logging.info(f"Found {file_count} corrupt JPG files")
+        
+        savings_str = humanize.naturalsize(total_size_saved)
+        savings_color = colorama.Fore.GREEN if total_size_saved > 0 else colorama.Fore.RESET
+        savings_msg = f"Total space savings: {savings_color}{savings_str}{colorama.Style.RESET_ALL}"
+        logging.info(savings_msg)
         
         # Save list of corrupt files if requested
         if args.output and bad_files:
