@@ -9,7 +9,6 @@ from pathlib import Path
 from PIL import Image
 from tqdm import tqdm
 import tqdm.auto as tqdm_auto
-from tqdm.contrib import trange
 import colorama
 import humanize
 import logging
