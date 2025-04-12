@@ -7,6 +7,8 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Colorful](https://img.shields.io/badge/output-colorful-orange)
 
+<img src="docs/2pac.jpg" alt="2PAC Coding" width="400">
+
 **All Eyez On Your Images: A lightning-fast tool to find and whack corrupt image files from your photo collection.**
 
 *"I ain't a killer but don't push me. Corrupt images got their days numbered."*
@@ -272,10 +274,12 @@ Progress options:
 ## 🔍 How It Works
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/docs/workflow.png" alt="Bad Image Finder Workflow" width="700">
+<img src="https://raw.githubusercontent.com/ricyoung/2pac/main/docs/workflow.png" alt="2PAC Workflow" width="700">
+
+*"I see no changes, wake up in the morning and I ask myself, is my image collection worth cleanin'? I don't know."*
 </div>
 
-Bad Image Finder uses a sophisticated multi-step approach to handle corrupt image files:
+2PAC uses a sophisticated multi-step approach to handle corrupt image files:
 
 ### 🔎 Validation Process
 
@@ -834,7 +838,9 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 ---
 
 <div align="center">
-<img src="https://raw.githubusercontent.com/ricyoung/bad-jpg-finder/main/preview.gif" alt="Bad Image Finder in action" width="700">
+<img src="https://raw.githubusercontent.com/ricyoung/2pac/main/preview.gif" alt="2PAC in action" width="700">
+
+*"You know they'll never take me alive, I'm gettin' money. You know they'll never take these corrupt JPEGs alive."*
 
 Made with ❤️ by Richard Young
 </div>
