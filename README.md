@@ -98,6 +98,10 @@
   - 📦 **Move** - Relocate corrupt files to a separate directory
   - 🔧 **Repair** - Attempt to fix corrupted images
   - ⏸️ **Resume** - Continue interrupted scans from where they left off
+- **Security Tools**:
+  - 🕵️ **[RAT Finder](docs/rat_finder.md)** - Detects hidden data (steganography) in images
+  - 🔐 Multiple steganography detection methods including LSB, ELA and histogram analysis
+  - 📊 Visual reporting for easy analysis of suspicious images
 - **Beautiful Interface**:
   - 🌈 **Colorful Output** - Color-coded progress bars and logs
   - 📊 **Visual Progress** - Real-time progress tracking with ETA
@@ -117,6 +121,9 @@
   - [tqdm](https://github.com/tqdm/tqdm) - Progress bar
   - [humanize](https://github.com/jmoiron/humanize) - Human-readable metrics
   - [colorama](https://github.com/tartley/colorama) - Cross-platform colored terminal output
+  - [numpy](https://numpy.org/) - Numerical operations (required for RAT Finder)
+  - [scipy](https://scipy.org/) - Scientific computing (required for RAT Finder)
+  - [matplotlib](https://matplotlib.org/) - Data visualization (required for RAT Finder)
 
 ## 🚀 Installation
 
@@ -663,6 +670,48 @@ Visual corruption detection works seamlessly with other features:
 - Use with `--ignore-eof` to find only visibly corrupt files while ignoring technical issues
 - Use with `--repair` to attempt to fix files that have both visual and technical corruption
 - Use with `--move-to` to collect all visually corrupt files in a separate directory for review
+
+## 🕵️ RAT Finder: Steganography Detection Tool
+
+<div align="center">
+
+*"What the eyes see and the ears hear, the mind believes."*
+</div>
+
+The 2PAC toolkit now includes a powerful steganography detection tool called **RAT Finder** that helps you identify images containing hidden data. While find_bad_images.py focuses on corruption detection, RAT Finder specializes in security analysis.
+
+### Key Capabilities
+
+<table>
+<tr>
+<td width="80" align="center">🔍</td>
+<td><b>Multiple Detection Methods</b><br>Combines six different analysis techniques to detect various steganography approaches, including LSB, DCT manipulation, and metadata hiding</td>
+</tr>
+<tr>
+<td align="center">🔄</td>
+<td><b>Error Level Analysis (ELA)</b><br>Advanced technique that recompresses images and analyzes error patterns to detect manipulated areas</td>
+</tr>
+<tr>
+<td align="center">📊</td>
+<td><b>Rich Visual Reports</b><br>Generates comprehensive visual reports with 9 different analysis panels to help interpret results</td>
+</tr>
+<tr>
+<td align="center">⚙️</td>
+<td><b>Adjustable Sensitivity</b><br>Control detection thresholds to balance between false positives and false negatives</td>
+</tr>
+</table>
+
+### Usage
+
+```bash
+# Scan a directory for steganography
+./rat_finder.py /path/to/images
+
+# Check a specific suspicious file
+./rat_finder.py --check-file suspicious.jpg --visual-reports ./reports
+```
+
+[Learn more about RAT Finder and steganography detection →](docs/rat_finder.md)
 
 ## 🎚️ New Validation System
 

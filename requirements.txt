@@ -2,3 +2,6 @@ Pillow
 tqdm
 humanize
 colorama
+numpy
+scipy
+matplotlib
