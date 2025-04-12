@@ -1,0 +1,19 @@
+# GitHub Repository Metadata
+
+## Short Description
+Find and eliminate corrupt image files with visual detection. In memory of Jeff Young.
+
+## Detailed Description
+2PAC (Picture Analyzer & Corruption killer) is a lightning-fast tool for finding and eliminating corrupt image files from your photo collection. It includes intelligent visual corruption detection to identify images with large gray/black areas that traditional validation misses. Unlike other tools, 2PAC can distinguish between technical corruption and visible corruption, helping you preserve viewable images while eliminating truly damaged ones.
+
+## Topics
+- image-processing
+- corruption-detection
+- jpeg-repair
+- python-tool
+- image-validation
+- photo-management
+- visual-analysis
+- file-cleaner
+- digital-preservation
+- memory-preservation
