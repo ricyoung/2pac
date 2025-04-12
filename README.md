@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Colorful](https://img.shields.io/badge/output-colorful-orange)
@@ -12,6 +12,29 @@
 *Created by [Richard Young](https://github.com/ricyoung)*
 
 </div>
+
+## 🚀 What's New in v1.5.0
+
+<table>
+<tr>
+<td width="80" align="center">👁️</td>
+<td><b>Visual Corruption Detection</b><br>New command-line option <code>--check-visual</code> analyzes image content to detect visually corrupt files with large gray/black areas</td>
+</tr>
+<tr>
+<td align="center">🔍</td>
+<td><b>Adjustable Detection Strictness</b><br>New <code>--visual-strictness {low,medium,high}</code> option lets you control how aggressive the visual corruption detection should be</td>
+</tr>
+<tr>
+<td align="center">🧠</td>
+<td><b>Smart Detection Algorithm</b><br>Intelligently distinguishes between corruption and legitimate solid-colored areas like white backgrounds</td>
+</tr>
+<tr>
+<td align="center">🔧</td>
+<td><b>Combined Detection Modes</b><br>Can be used with <code>--ignore-eof</code> to find only visually corrupt files while ignoring technical EOF issues</td>
+</tr>
+</table>
+
+[Skip to the detailed Visual Content Analysis section](#-visual-content-analysis)
 
 ## 🚀 What's New in v1.4.0
 
@@ -49,14 +72,19 @@
 - **High Performance**: Parallel processing to handle thousands of images efficiently
 - **Advanced Validation Technology**: 
   - 🧐 Checks both image headers and data to identify corruption
-  - 🎚️ **NEW:** Adjustable sensitivity levels to balance speed vs thoroughness:
+  - 👁️ **NEW:** Visual corruption detection to find files with gray/black areas
+  - 🎚️ Adjustable sensitivity levels to balance speed vs thoroughness:
     - **Low:** Basic header checks for quick scans (fastest)
     - **Medium:** Standard validation for most use cases (default)
     - **High:** Deep structure analysis to catch subtle corruption (most thorough)
-  - 📐 **NEW:** Format-specific structure validation:
+  - 🔍 **NEW:** Visual strictness levels to control how aggressively to detect visible corruption:
+    - **Low:** Only the most obvious visual corruption (minimal false positives)
+    - **Medium:** Balanced visual detection (default)
+    - **High:** Catches more subtle visual corruption (may have false positives)
+  - 📐 Format-specific structure validation:
     - JPEG: Verifies marker sequence, EOI presence, segment structure
     - PNG: Validates chunks, CRC checksums, IHAT compression integrity
-  - 🧩 **NEW:** Smart EOF handling with `--ignore-eof` option for files that are technically 
+  - 🧩 Smart EOF handling with `--ignore-eof` option for files that are technically 
     corrupt (missing proper end markers) but still viewable in most applications
 - **Multiple Operation Modes**:
   - 🔍 **Dry Run** - Preview corrupt files with no changes (default)
@@ -73,6 +101,7 @@
   - Adjust worker count
   - Filter by image format
   - Save reports for later review
+  - Preserve directory structure when moving files
 
 ## 📋 Requirements
 
@@ -183,7 +212,8 @@ usage: find_bad_images.py [-h] [--list-sessions] [--delete] [--move-to MOVE_TO]
                           [--jpeg] [--png] [--tiff] [--gif] [--bmp]
                           [--save-interval SAVE_INTERVAL] [--progress-dir PROGRESS_DIR]
                           [--resume SESSION_ID] [--sensitivity {low,medium,high}]
-                          [--ignore-eof]
+                          [--ignore-eof] [--check-visual]
+                          [--visual-strictness {low,medium,high}]
                           [directory]
 
 positional arguments:
@@ -222,6 +252,9 @@ Validation options:
                     Set validation sensitivity level: low (basic checks), 
                     medium (standard checks), high (most strict) (default: medium)
   --ignore-eof      Ignore missing end-of-file markers (useful for truncated but viewable files)
+  --check-visual    Analyze image content to detect visible corruption like gray/black areas
+  --visual-strictness {low,medium,high}
+                    Set strictness level for visual corruption detection (default: medium)
 
 Progress options:
   --save-interval SAVE_INTERVAL
@@ -434,9 +467,196 @@ For large collections, an intelligent progress tracking system prevents wasted w
 # Result: Files like '/Volumes/ExternalDrive/folder1/subfolder/image.jpg' will be moved to '~/Desktop/corrupted/folder1/subfolder/image.jpg'
 ```
 
+### Visual corruption detection
+
+```bash
+# Find images with visible corruption (gray/black areas)
+./find_bad_images.py /Volumes/Photos --check-visual --move-to ~/Desktop/visibly_corrupt
+
+# Ignore technical issues and only find visual corruption
+./find_bad_images.py /Volumes/Photos --check-visual --ignore-eof --move-to ~/Desktop/visibly_corrupt
+
+# Use a more conservative detection (fewer false positives)
+./find_bad_images.py /Volumes/Photos --check-visual --visual-strictness low
+
+# Use a stricter detection (catches more corruption but may have false positives)
+./find_bad_images.py /Volumes/Photos --check-visual --visual-strictness high
+```
+
+## 👁️ Visual Content Analysis
+
+The latest version introduces a powerful new visual corruption detection system that can find files with actual visible corruption, even if they pass technical validation checks:
+
+### 1. Types of Visual Corruption Detected
+
+<table>
+<tr>
+<th>Type</th>
+<th>Sample</th>
+<th>Description</th>
+</tr>
+<tr>
+<td>Gray Block</td>
+<td align="center"><img src="docs/samples/gray_block_corruption.jpg" width="200"></td>
+<td>Large areas of uniform gray color that replace image content</td>
+</tr>
+<tr>
+<td>Black Block</td>
+<td align="center"><img src="docs/samples/black_block_corruption.jpg" width="200"></td>
+<td>Sections of solid black that indicate missing or corrupted data</td>
+</tr>
+<tr>
+<td>Partial Image</td>
+<td align="center"><img src="docs/samples/partial_corruption.jpg" width="200"></td>
+<td>Bottom or top sections of the image replaced with solid colors</td>
+</tr>
+<tr>
+<td>Normal Image</td>
+<td align="center"><img src="docs/samples/perfect_image.jpg" width="200"></td>
+<td>For comparison: a normal, uncorrupted image</td>
+</tr>
+</table>
+
+### 2. Visual Strictness Levels
+
+<table>
+<tr>
+<th align="center">Level</th>
+<th>Description</th>
+<th>Use Case</th>
+</tr>
+<tr>
+<td align="center">Low</td>
+<td>
+<ul>
+<li>Only detects very obvious corruption</li>
+<li>Requires 30%+ of image to be uniform gray/black</li>
+<li>Minimal false positives</li>
+</ul>
+</td>
+<td>
+<ul>
+<li>When you only want to find severely corrupted images</li>
+<li>For photos with lots of legitimate white/black areas</li>
+<li>Most conservative detection</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td align="center">Medium</td>
+<td>
+<ul>
+<li>Balanced visual corruption detection</li>
+<li>Requires 20%+ of image to be uniform gray/black</li>
+<li>Good balance between detection and false positives</li>
+</ul>
+</td>
+<td>
+<ul>
+<li>Default for most use cases</li>
+<li>Regular photo library maintenance</li>
+<li>When you want to catch most visual corruption</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td align="center">High</td>
+<td>
+<ul>
+<li>Most sensitive detection</li>
+<li>Requires only 15%+ of image to be uniform gray/black</li>
+<li>Also checks for unusual color distribution</li>
+<li>May have some false positives</li>
+</ul>
+</td>
+<td>
+<ul>
+<li>When finding all corruption is critical</li>
+<li>For photos that must be perfect</li>
+<li>When reviewing results is not a problem</li>
+</ul>
+</td>
+</tr>
+</table>
+
+### 3. Smart Detection Features
+
+The visual corruption detection algorithm includes several smart features:
+
+- **Color Context Awareness**: Distinguishes between corruption and legitimate white/black areas based on color context
+- **Sampling Technique**: Uses intelligent sampling to efficiently analyze even large images
+- **Grayscale Detection**: Specifically targets mid-tone grays that are common in corruption but rare in natural photos
+- **White Area Handling**: Special handling for white areas, which are often legitimate in photos (sky, backgrounds, etc.)
+
+### 4. How Visual Detection Works
+
+1. **Image Sampling**: Takes a representative sample of pixels across the image
+2. **Color Analysis**: Identifies uniform color regions and calculates their percentage
+3. **Color Context**: Analyzes if the colors are likely corruption (mid-gray, black) or natural (white, gradient)
+4. **Threshold Comparison**: Compares against strictness thresholds to determine if corruption is present
+
+### 5. Visual vs Technical Corruption
+
+<table>
+<tr>
+<th>Scenario</th>
+<th>Technical Tests</th>
+<th>Visual Analysis</th>
+<th>Result</th>
+</tr>
+<tr>
+<td>Correctly structured file with gray blocks</td>
+<td align="center">✅ Passes</td>
+<td align="center">❌ Fails</td>
+<td>Detected by <code>--check-visual</code> only</td>
+</tr>
+<tr>
+<td>Missing EOF but visually perfect</td>
+<td align="center">❌ Fails</td>
+<td align="center">✅ Passes</td>
+<td>Caught by normal checks, bypassed with <code>--ignore-eof</code></td>
+</tr>
+<tr>
+<td>Severely corrupt file</td>
+<td align="center">❌ Fails</td>
+<td align="center">❌ Fails</td>
+<td>Detected by both methods</td>
+</tr>
+<tr>
+<td>Perfect file</td>
+<td align="center">✅ Passes</td>
+<td align="center">✅ Passes</td>
+<td>Passes all checks</td>
+</tr>
+</table>
+
+### 6. Command-Line Examples
+
+```bash
+# Find visibly corrupt files with medium strictness (default)
+find_bad_images.py /path/to/photos --check-visual --move-to /path/for/corrupted
+
+# Very strict detection - catches all visual corruption but may have false positives
+find_bad_images.py /path/to/photos --check-visual --visual-strictness high
+
+# Conservative detection - only flagging obvious corruption
+find_bad_images.py /path/to/photos --check-visual --visual-strictness low
+
+# Find only visually corrupt files but ignore technical EOF issues
+find_bad_images.py /path/to/photos --check-visual --ignore-eof
+```
+
+### 7. Combining With Other Features
+
+Visual corruption detection works seamlessly with other features:
+
+- Use with `--ignore-eof` to find only visibly corrupt files while ignoring technical issues
+- Use with `--repair` to attempt to fix files that have both visual and technical corruption
+- Use with `--move-to` to collect all visually corrupt files in a separate directory for review
+
 ## 🎚️ New Validation System
 
-The latest version introduces a powerful new validation system with improved control and detection capabilities:
+The v1.4.0 version introduced a powerful validation system with improved control and detection capabilities:
 
 ### 1. Sensitivity Levels
 
@@ -500,9 +720,9 @@ The latest version introduces a powerful new validation system with improved con
 </tr>
 </table>
 
-### 2. New EOF Marker Handling
+### 2. EOF Marker Handling
 
-The new `--ignore-eof` option addresses a common issue with images that are technically corrupt but still usable:
+The `--ignore-eof` option addresses a common issue with images that are technically corrupt but still usable:
 
 - **What it does**: Ignores missing End-Of-File/Image markers during validation
 - **When to use it**: For files that open properly in most viewers but fail strict validation
@@ -511,7 +731,7 @@ The new `--ignore-eof` option addresses a common issue with images that are tech
 
 ### 3. Enhanced Format-Specific Validation
 
-The new version includes deep structure validation for common formats:
+The tool includes deep structure validation for common formats:
 
 **JPEG Validation:**
 - Validates marker sequence (SOI, APP, COM, SOF, etc.)
@@ -583,90 +803,17 @@ The new version includes deep structure validation for common formats:
 <td align="center">✅</td>
 <td align="center">✅</td>
 </tr>
+<tr>
+<td>Large gray/black areas</td>
+<td align="center">❌</td>
+<td align="center">❌</td>
+<td align="center">❌</td>
+</tr>
 </table>
 
 ✅ = Detected | ❌ = Not detected | ⚠️ = Sometimes detected
 
-### 5. Decision Flowchart: Which Settings to Use?
-
-<table>
-<tr>
-<td colspan="3" align="center"><b>What's your primary concern?</b></td>
-</tr>
-<tr>
-<td align="center" width="33%"><b>Speed</b><br><i>I need to process quickly</i></td>
-<td align="center" width="33%"><b>Balance</b><br><i>I want good detection without sacrificing too much speed</i></td>
-<td align="center" width="33%"><b>Thoroughness</b><br><i>I need to find every possible corruption</i></td>
-</tr>
-<tr>
-<td align="center">⬇️</td>
-<td align="center">⬇️</td>
-<td align="center">⬇️</td>
-</tr>
-<tr>
-<td align="center"><code>--sensitivity low</code></td>
-<td align="center"><code>--sensitivity medium</code> (default)</td>
-<td align="center"><code>--sensitivity high</code></td>
-</tr>
-<tr>
-<td colspan="3" align="center"><b>Do your images need to strictly follow format specifications?</b></td>
-</tr>
-<tr>
-<td align="center" width="33%"><b>No</b><br><i>I just want viewable images</i></td>
-<td align="center" width="33%"><b>Somewhat</b><br><i>I want mostly valid files but some exceptions are ok</i></td>
-<td align="center" width="33%"><b>Yes</b><br><i>I need 100% format compliant files</i></td>
-</tr>
-<tr>
-<td align="center">⬇️</td>
-<td align="center">⬇️</td>
-<td align="center">⬇️</td>
-</tr>
-<tr>
-<td align="center">Add <code>--ignore-eof</code></td>
-<td align="center">Consider <code>--ignore-eof</code><br>with <code>--sensitivity high</code></td>
-<td align="center">Use without <code>--ignore-eof</code></td>
-</tr>
-</table>
-
-### 6. Real-World Examples
-
-<table>
-<tr>
-<th>Scenario</th>
-<th>Recommended Settings</th>
-<th>Why</th>
-</tr>
-<tr>
-<td>Quick check of large photo library</td>
-<td><code>--sensitivity low</code></td>
-<td>Fast initial scan to find obviously corrupt files</td>
-</tr>
-<tr>
-<td>Standard maintenance of personal photos</td>
-<td><code>--sensitivity medium</code> (default)</td>
-<td>Good balance of detection and performance</td>
-</tr>
-<tr>
-<td>Processing web-downloaded images</td>
-<td><code>--sensitivity medium --ignore-eof</code></td>
-<td>Many web images have missing EOI markers but are still viewable</td>
-</tr>
-<tr>
-<td>Preparing images for professional printing</td>
-<td><code>--sensitivity high</code></td>
-<td>Ensures highest quality images with no subtle corruption</td>
-</tr>
-<tr>
-<td>Archiving important image collections</td>
-<td><code>--sensitivity high</code></td>
-<td>Maximum detection ensures long-term preservation</td>
-</tr>
-<tr>
-<td>Recovery after hardware failure</td>
-<td><code>--sensitivity high --ignore-eof --repair</code></td>
-<td>Find all issues but attempt to keep viewable images</td>
-</tr>
-</table>
+> **Note**: To detect large gray/black areas, use the `--check-visual` option.
 
 ## 🤝 Contributing
 

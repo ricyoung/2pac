@@ -55,7 +55,7 @@ REPAIRABLE_FORMATS = ['JPEG', 'PNG', 'GIF']
 DEFAULT_PROGRESS_DIR = os.path.expanduser("~/.bad_image_finder/progress")
 
 # Current version
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 def setup_logging(verbose, no_color=False):
     level = logging.DEBUG if verbose else logging.INFO
