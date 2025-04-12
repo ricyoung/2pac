@@ -951,99 +951,62 @@ def process_images(directory, formats, dry_run=True, repair=False,
 def print_banner():
     """Print 2PAC-themed ASCII art banner"""
     banner = r"""
-    ██████╗ ██████╗  █████╗  ██████╗
-    ╚════██╗██╔══██╗██╔══██╗██╔════╝
-     █████╔╝██████╔╝███████║██║     
-     ╚═══██╗██╔═══╝ ██╔══██║██║     
-    ██████╔╝██║     ██║  ██║╚██████╗
-    ╚═════╝ ╚═╝     ╚═╝  ╚═╝ ╚═════╝
-    The Picture Analyzer & Corruption killer
-    In memory of Jeff Young - Bringing people together & helping others
+     ██████╗    ██████╗  █████╗   ██████╗
+    ████████╗   ██╔══██╗██╔══██╗  ██╔═══╝
+    ╚════███║   ██████╔╝███████║  ██║     
+       ███╔═╝   ██╔═══╝ ██╔══██║  ██║     
+    ███████╗█╗  ██║     ██║  ██║  ██████╗
+    ╚══════╝╚╝  ╚═╝     ╚═╝  ╚═╝  ╚═════╝
+    ╔═════════════════════════════════════════════════════════╗
+    ║ The Picture Analyzer & Corruption killer                ║
+    ║ In memory of Jeff Young - Bringing people together      ║
+    ╚═════════════════════════════════════════════════════════╝
     """
     
     # Colored version of the banner, highlighting PAC for Picture Analyzer Corruption
     if 'colorama' in sys.modules:
         banner_lines = banner.strip().split('\n')
-        
-        # Replace the original title line with colorful version
-        title_index = -2  # Second to last line
-        title_parts = ["The ", "Picture ", "Analyzer ", "& ", "Corruption ", "killer"]
-        colored_title = f"{colorama.Fore.WHITE}The " + \
-                       f"{colorama.Fore.RED}Picture " + \
-                       f"{colorama.Fore.GREEN}Analyzer " + \
-                       f"{colorama.Fore.WHITE}& " + \
-                       f"{colorama.Fore.BLUE}Corruption " + \
-                       f"{colorama.Fore.WHITE}killer{colorama.Style.RESET_ALL}"
-        
-        # Create colored version of the 2PAC logo (lines 0-5)
         colored_banner = []
+        
+        # Color the ASCII art logo (lines 0-5)
         for i, line in enumerate(banner_lines):
-            if i == title_index:
-                colored_banner.append(colored_title)
-            elif i == 0:
-                # Colorize the first digit '2'
-                new_line = f"{colorama.Fore.WHITE}{line[:5]}{colorama.Style.RESET_ALL}"
-                # Colorize 'P'
-                new_line += f"{colorama.Fore.RED}{line[5:13]}{colorama.Style.RESET_ALL}"
-                # Colorize 'A'
-                new_line += f"{colorama.Fore.GREEN}{line[13:21]}{colorama.Style.RESET_ALL}"
-                # Colorize 'C'
-                new_line += f"{colorama.Fore.BLUE}{line[21:]}{colorama.Style.RESET_ALL}"
-                colored_banner.append(new_line)
-            elif i == 1:
-                # Colorize the first part of second line
-                new_line = f"{colorama.Fore.WHITE}{line[:5]}{colorama.Style.RESET_ALL}"
-                # Colorize 'P' part
-                new_line += f"{colorama.Fore.RED}{line[5:13]}{colorama.Style.RESET_ALL}"
-                # Colorize 'A' part
-                new_line += f"{colorama.Fore.GREEN}{line[13:21]}{colorama.Style.RESET_ALL}"
-                # Colorize 'C' part
-                new_line += f"{colorama.Fore.BLUE}{line[21:]}{colorama.Style.RESET_ALL}"
-                colored_banner.append(new_line)
-            elif i == 2:
-                # Colorize the first part of third line
-                new_line = f"{colorama.Fore.WHITE}{line[:5]}{colorama.Style.RESET_ALL}"
-                # Colorize 'P' part
-                new_line += f"{colorama.Fore.RED}{line[5:13]}{colorama.Style.RESET_ALL}"
-                # Colorize 'A' part
-                new_line += f"{colorama.Fore.GREEN}{line[13:21]}{colorama.Style.RESET_ALL}"
-                # Colorize 'C' part
-                new_line += f"{colorama.Fore.BLUE}{line[21:]}{colorama.Style.RESET_ALL}"
-                colored_banner.append(new_line)
-            elif i == 3:
-                # Colorize the first part of fourth line
-                new_line = f"{colorama.Fore.WHITE}{line[:5]}{colorama.Style.RESET_ALL}"
-                # Colorize 'P' part
-                new_line += f"{colorama.Fore.RED}{line[5:13]}{colorama.Style.RESET_ALL}"
-                # Colorize 'A' part
-                new_line += f"{colorama.Fore.GREEN}{line[13:21]}{colorama.Style.RESET_ALL}"
-                # Colorize 'C' part
-                new_line += f"{colorama.Fore.BLUE}{line[21:]}{colorama.Style.RESET_ALL}"
-                colored_banner.append(new_line)
-            elif i == 4:
-                # Colorize the first part of fifth line
-                new_line = f"{colorama.Fore.WHITE}{line[:5]}{colorama.Style.RESET_ALL}"
-                # Colorize 'P' part
-                new_line += f"{colorama.Fore.RED}{line[5:13]}{colorama.Style.RESET_ALL}"
-                # Colorize 'A' part
-                new_line += f"{colorama.Fore.GREEN}{line[13:21]}{colorama.Style.RESET_ALL}"
-                # Colorize 'C' part
-                new_line += f"{colorama.Fore.BLUE}{line[21:]}{colorama.Style.RESET_ALL}"
-                colored_banner.append(new_line)
-            elif i == 5:
-                # Colorize the first part of sixth line
-                new_line = f"{colorama.Fore.WHITE}{line[:5]}{colorama.Style.RESET_ALL}"
-                # Colorize 'P' part
-                new_line += f"{colorama.Fore.RED}{line[5:13]}{colorama.Style.RESET_ALL}"
-                # Colorize 'A' part
-                new_line += f"{colorama.Fore.GREEN}{line[13:21]}{colorama.Style.RESET_ALL}"
-                # Colorize 'C' part
-                new_line += f"{colorama.Fore.BLUE}{line[21:]}{colorama.Style.RESET_ALL}"
-                colored_banner.append(new_line)
-            elif i == len(banner_lines) - 1:  # Last line (tribute)
-                colored_banner.append(f"{colorama.Fore.CYAN}{line}{colorama.Style.RESET_ALL}")
+            if i < 6:  # The ASCII art logo lines
+                # For "2" part (first column)
+                part1 = line[:13]
+                # For "P" part (second column)
+                part2 = line[13:24]
+                # For "A" part (third column)
+                part3 = line[24:35]
+                # For "C" part (fourth column)
+                part4 = line[35:]
+                
+                colored_line = f"{colorama.Fore.WHITE}{part1}" + \
+                               f"{colorama.Fore.RED}{part2}" + \
+                               f"{colorama.Fore.GREEN}{part3}" + \
+                               f"{colorama.Fore.BLUE}{part4}{colorama.Style.RESET_ALL}"
+                               
+                colored_banner.append(colored_line)
+            elif i >= 6 and i <= 9:  # The box and text lines
+                if i == 7:  # Title line with PAC highlighted
+                    parts = line.split("Picture Analyzer & Corruption")
+                    if len(parts) == 2:
+                        prefix = parts[0]
+                        suffix = parts[1]
+                        colored_title = f"{colorama.Fore.YELLOW}{prefix}" + \
+                                       f"{colorama.Fore.RED}Picture " + \
+                                       f"{colorama.Fore.GREEN}Analyzer " + \
+                                       f"{colorama.Fore.WHITE}& " + \
+                                       f"{colorama.Fore.BLUE}Corruption" + \
+                                       f"{colorama.Fore.YELLOW}{suffix}{colorama.Style.RESET_ALL}"
+                        colored_banner.append(colored_title)
+                    else:
+                        colored_banner.append(f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}")
+                elif i == 8:  # Jeff Young tribute line
+                    colored_banner.append(f"{colorama.Fore.CYAN}{line}{colorama.Style.RESET_ALL}")
+                else:  # Box border lines
+                    colored_banner.append(f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}")
             else:
-                colored_banner.append(f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}")
+                colored_banner.append(f"{colorama.Fore.WHITE}{line}{colorama.Style.RESET_ALL}")
         
         print('\n'.join(colored_banner))
     else:
