@@ -1,8 +1,8 @@
-# RAT Finder: Steganography Detection Tool (v0.2.0-Beta)
+# RAT Finder: Steganography Detection Tool
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.2.0--beta-red.svg)
+![Version](https://img.shields.io/badge/version-0.2.0-red.svg)
 ![Python](https://img.shields.io/badge/python-3.6%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 

@@ -25,8 +25,8 @@ from tqdm import tqdm
 # Initialize colorama
 colorama.init()
 
-# Version - Beta
-VERSION = "0.2.0-beta"
+# Version
+VERSION = "0.2.0"
 
 # Set up logging
 def setup_logging(verbose, no_color=False):
@@ -68,19 +68,36 @@ def setup_logging(verbose, no_color=False):
 def print_banner():
     """Print RAT Finder themed ASCII art banner"""
     banner = r"""
-    ██████╗  █████╗ ████████╗    ███████╗██╗███╗   ██╗██████╗ ███████╗██████╗ 
-    ██╔══██╗██╔══██╗╚══██╔══╝    ██╔════╝██║████╗  ██║██╔══██╗██╔════╝██╔══██╗
-    ██████╔╝███████║   ██║       █████╗  ██║██╔██╗ ██║██║  ██║█████╗  ██████╔╝
-    ██╔══██╗██╔══██║   ██║       ██╔══╝  ██║██║╚██╗██║██║  ██║██╔══╝  ██╔══██╗
-    ██║  ██║██║  ██║   ██║       ██║     ██║██║ ╚████║██████╔╝███████╗██║  ██║
-    ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝       ╚═╝     ╚═╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═╝  ╚═╝
-    Steganography Detection Tool (v0.2.0-Beta) - Part of the 2PAC toolkit
-    Now with advanced histogram analysis for better hidden data detection
+    ██████╗  █████╗ ████████╗   ███████╗██╗███╗   ██╗██████╗ ███████╗██████╗ 
+    ██╔══██╗██╔══██╗╚══██╔══╝   ██╔════╝██║████╗  ██║██╔══██╗██╔════╝██╔══██╗
+    ██████╔╝███████║   ██║█████╗█████╗  ██║██╔██╗ ██║██║  ██║█████╗  ██████╔╝
+    ██╔══██╗██╔══██║   ██║╚════╝██╔══╝  ██║██║╚██╗██║██║  ██║██╔══╝  ██╔══██╗
+    ██║  ██║██║  ██║   ██║      ██║     ██║██║ ╚████║██████╔╝███████╗██║  ██║
+    ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝      ╚═╝     ╚═╝╚═╝  ╚═══╝╚═════╝ ╚══════╝╚═╝  ╚═╝
+    ╔═══════════════════════════════════════════════════════════════════════╗
+    ║ Steganography Detection Tool (v0.2.0) - Part of the 2PAC toolkit       ║
+    ║ "What the eyes see and the ears hear, the mind believes"               ║
+    ╚═══════════════════════════════════════════════════════════════════════╝
     """
     
     if 'colorama' in sys.modules:
         banner_lines = banner.strip().split('\n')
-        colored_banner = [f"{colorama.Fore.RED}{line}{colorama.Style.RESET_ALL}" for line in banner_lines]
+        colored_banner = []
+        
+        # Color the RAT part in red, the FINDER part in blue
+        for i, line in enumerate(banner_lines):
+            if i < 6:  # The logo lines
+                # Add the RAT part in red
+                part1 = line[:24]
+                # Add the FINDER part in blue
+                part2 = line[24:]
+                colored_line = f"{colorama.Fore.RED}{part1}{colorama.Fore.BLUE}{part2}{colorama.Style.RESET_ALL}"
+                colored_banner.append(colored_line)
+            elif i >= 6 and i <= 9:  # The box with text
+                colored_banner.append(f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}")
+            else:
+                colored_banner.append(f"{colorama.Fore.WHITE}{line}{colorama.Style.RESET_ALL}")
+        
         print('\n'.join(colored_banner))
     else:
         print(banner)
@@ -1013,8 +1030,8 @@ def main():
     print_banner()
     
     parser = argparse.ArgumentParser(
-        description='RAT Finder: Steganography Detection Tool (v0.2.0-Beta)',
-        epilog='Part of the 2PAC toolkit - Created by Richard Young - Now with histogram analysis detection'
+        description='RAT Finder: Steganography Detection Tool (v0.2.0)',
+        epilog='Part of the 2PAC toolkit - Created by Richard Young'
     )
     
     # Main action
@@ -1138,7 +1155,7 @@ def main():
         
     # Add signature at the end
     if not args.no_color:
-        signature = f"\n{colorama.Fore.RED}RAT Finder v{VERSION} (Beta) by Richard Young{colorama.Style.RESET_ALL}"
+        signature = f"\n{colorama.Fore.RED}RAT Finder v{VERSION} by Richard Young{colorama.Style.RESET_ALL}"
         tagline = f"{colorama.Fore.YELLOW}\"Uncovering what's hidden in plain sight.\"{colorama.Style.RESET_ALL}"
         print(signature)
         print(tagline)
