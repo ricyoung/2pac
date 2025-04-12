@@ -18,6 +18,7 @@ import hashlib
 import struct
 import tempfile
 import subprocess
+import random
 from datetime import datetime
 from pathlib import Path
 from PIL import Image, ImageFile, UnidentifiedImageError
@@ -26,6 +27,13 @@ import tqdm.auto as tqdm_auto
 import colorama
 import humanize
 import logging
+
+# Import 2PAC quotes
+try:
+    from quotes import QUOTES
+except ImportError:
+    # Default quotes if file is missing
+    QUOTES = ["All Eyez On Your Images."]
 
 # Initialize colorama (required for Windows)
 colorama.init()
@@ -936,10 +944,32 @@ def process_images(directory, formats, dry_run=True, repair=False,
     
     return bad_files, repaired_files, total_size_saved
 
+def print_banner():
+    """Print 2PAC-themed ASCII art banner"""
+    banner = r"""
+    ██████╗ ██████╗  █████╗  ██████╗
+    ╚════██╗██╔══██╗██╔══██╗██╔════╝
+     █████╔╝██████╔╝███████║██║     
+     ╚═══██╗██╔═══╝ ██╔══██║██║     
+    ██████╔╝██║     ██║  ██║╚██████╗
+    ╚═════╝ ╚═╝     ╚═╝  ╚═╝ ╚═════╝
+    The Picture Analyzer & Corruption killer
+    """
+    
+    if 'colorama' in sys.modules:
+        banner_lines = banner.strip().split('\n')
+        colored_banner = [f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}" for line in banner_lines]
+        print('\n'.join(colored_banner))
+    else:
+        print(banner)
+    print()
+
 def main():
+    print_banner()
+    
     parser = argparse.ArgumentParser(
-        description='Find, repair, and manage corrupt image files',
-        epilog='Created by Richard Young - https://github.com/ricyoung/bad-jpg-finder'
+        description='2PAC: The Picture Analyzer & Corruption killer',
+        epilog='Created by Richard Young - "All Eyez On Your Images" - https://github.com/ricyoung/2pac'
     )
     
     # Main action (mutually exclusive)
@@ -1276,8 +1306,10 @@ def main():
         
         if not args.no_color:
             # Add signature at the end of the run
-            signature = f"\n{colorama.Fore.CYAN}Bad Image Finder v{VERSION} by Richard Young{colorama.Style.RESET_ALL}"
+            signature = f"\n{colorama.Fore.CYAN}2PAC v{VERSION} by Richard Young{colorama.Style.RESET_ALL}"
+            quote = f"{colorama.Fore.YELLOW}\"{random.choice(QUOTES)}\"{colorama.Style.RESET_ALL}"
             print(signature)
+            print(quote)
         
         # Save list of corrupt files if requested
         if args.output and bad_files:

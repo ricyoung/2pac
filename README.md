@@ -1,4 +1,4 @@
-# 🖼️ Bad Image Finder
+# 🔫 2PAC: The Picture Analyzer & Corruption killer
 
 <div align="center">
 
@@ -7,7 +7,9 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Colorful](https://img.shields.io/badge/output-colorful-orange)
 
-**A lightning-fast tool to find and clean up corrupt image files from your photo collection.**
+**All Eyez On Your Images: A lightning-fast tool to find and whack corrupt image files from your photo collection.**
+
+*"I ain't a killer but don't push me. Corrupt images got their days numbered."*
 
 *Created by [Richard Young](https://github.com/ricyoung)*
 
@@ -116,8 +118,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/ricyoung/bad-jpg-finder.git
-cd bad-jpg-finder
+git clone https://github.com/ricyoung/2pac.git
+cd 2pac
 
 # Install dependencies
 pip install -r requirements.txt
@@ -125,6 +127,8 @@ pip install -r requirements.txt
 # Make executable (Unix/macOS)
 chmod +x find_bad_images.py
 ```
+
+*"They got money for wars, but can't feed the poor." - But we got tools for your images.*
 
 ## 🧰 Usage
 
