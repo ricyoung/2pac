@@ -15,6 +15,8 @@
 
 *Created by [Richard Young](https://github.com/ricyoung)*
 
+[View official logo and usage guidelines](docs/logo.md)
+
 </div>
 
 ## 🚀 What's New in v1.5.0
@@ -838,6 +840,10 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 ---
 
 ## 🕊️ In Memory of Jeff Young
+
+<div align="center">
+<img src="docs/jeff.jpg" alt="Jeff Young" width="400">
+</div>
 
 This project is dedicated to the memory of Jeff Young, who loved Tupac's music and embodied his spirit of bringing people together. Like my brother, Jeff would always reach out to help others, making connections and building community wherever he went. His compassion for people and willingness to always lend a hand to those in need are qualities that inspired this tool's purpose - helping others preserve their precious memories.
 
