@@ -951,12 +951,13 @@ def process_images(directory, formats, dry_run=True, repair=False,
 def print_banner():
     """Print 2PAC-themed ASCII art banner"""
     banner = r"""
-     ██████╗    ██████╗  █████╗   ██████╗
-    ████████╗   ██╔══██╗██╔══██╗  ██╔═══╝
-    ╚════███║   ██████╔╝███████║  ██║     
-       ███╔═╝   ██╔═══╝ ██╔══██║  ██║     
-    ███████╗█╗  ██║     ██║  ██║  ██████╗
-    ╚══════╝╚╝  ╚═╝     ╚═╝  ╚═╝  ╚═════╝
+    ░▒▓███████▓▒░░▒▓███████▓▒░ ░▒▓██████▓▒░ ░▒▓██████▓▒░
+           ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+           ░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░
+     ░▒▓██████▓▒░░▒▓███████▓▒░░▒▓████████▓▒░▒▓█▓▒░
+    ░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░
+    ░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░
+    ░▒▓████████▓▒░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░░▒▓██████▓▒░
     ╔═════════════════════════════════════════════════════════╗
     ║ The Picture Analyzer & Corruption killer                ║
     ║ In memory of Jeff Young - Bringing people together      ║
@@ -968,17 +969,17 @@ def print_banner():
         banner_lines = banner.strip().split('\n')
         colored_banner = []
         
-        # Color the ASCII art logo (lines 0-5)
+        # Color the new gradient ASCII art logo (lines 0-6)
         for i, line in enumerate(banner_lines):
-            if i < 6:  # The ASCII art logo lines
+            if i < 7:  # The ASCII art logo lines for the new gradient style
                 # For "2" part (first column)
-                part1 = line[:13]
+                part1 = line[:11]
                 # For "P" part (second column)
-                part2 = line[13:24]
+                part2 = line[11:24]
                 # For "A" part (third column)
-                part3 = line[24:35]
+                part3 = line[24:38]
                 # For "C" part (fourth column)
-                part4 = line[35:]
+                part4 = line[38:]
                 
                 colored_line = f"{colorama.Fore.WHITE}{part1}" + \
                                f"{colorama.Fore.RED}{part2}" + \
@@ -986,8 +987,8 @@ def print_banner():
                                f"{colorama.Fore.BLUE}{part4}{colorama.Style.RESET_ALL}"
                                
                 colored_banner.append(colored_line)
-            elif i >= 6 and i <= 9:  # The box and text lines
-                if i == 7:  # Title line with PAC highlighted
+            elif i >= 7 and i <= 10:  # The box and text lines
+                if i == 8:  # Title line with PAC highlighted
                     parts = line.split("Picture Analyzer & Corruption")
                     if len(parts) == 2:
                         prefix = parts[0]
@@ -1001,7 +1002,7 @@ def print_banner():
                         colored_banner.append(colored_title)
                     else:
                         colored_banner.append(f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}")
-                elif i == 8:  # Jeff Young tribute line
+                elif i == 9:  # Jeff Young tribute line
                     colored_banner.append(f"{colorama.Fore.CYAN}{line}{colorama.Style.RESET_ALL}")
                 else:  # Box border lines
                     colored_banner.append(f"{colorama.Fore.YELLOW}{line}{colorama.Style.RESET_ALL}")
