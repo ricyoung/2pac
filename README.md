@@ -1,5 +1,10 @@
 # 🔫 2PAC: The Picture Analyzer & Corruption killer
 
+> 2**P**AC stands for: 
+> - **P**icture
+> - **A**nalyzer & 
+> - **C**orruption killer
+
 <div align="center">
 
 ![Version](https://img.shields.io/badge/version-1.5.0-blue.svg)
