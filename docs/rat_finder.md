@@ -275,6 +275,9 @@ For suspicious images, RAT Finder can generate detailed visual reports that incl
 # Scan a directory for steganography
 ./rat_finder.py /path/to/images
 
+# Quick exit
+./rat_finder.py q
+
 # Scan with high sensitivity (fewer false negatives, more false positives)
 ./rat_finder.py /path/to/images --sensitivity low
 

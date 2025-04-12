@@ -151,6 +151,14 @@ chmod +x find_bad_images.py
 
 This performs a dry run, showing which files would be deleted without making changes.
 
+### Quick Exit
+
+```bash
+./find_bad_images.py q
+```
+
+Quickly exit the program. This works for both find_bad_images.py and rat_finder.py.
+
 ### Delete Mode
 
 ```bash

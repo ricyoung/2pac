@@ -1016,6 +1016,11 @@ def print_banner():
 def main():
     print_banner()
     
+    # Check for 'q' command to quit
+    if len(sys.argv) == 2 and sys.argv[1].lower() == 'q':
+        print(f"{colorama.Fore.YELLOW}Exiting 2PAC. Stay safe!{colorama.Style.RESET_ALL}")
+        sys.exit(0)
+    
     parser = argparse.ArgumentParser(
         description='2PAC: The Picture Analyzer & Corruption killer',
         epilog='Created by Richard Young - "All Eyez On Your Images" - https://github.com/ricyoung/2pac'

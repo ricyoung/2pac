@@ -1029,6 +1029,11 @@ def analyze_images(directory, sensitivity='medium', recursive=True, output_dir=N
 def main():
     print_banner()
     
+    # Check for 'q' command to quit
+    if len(sys.argv) == 2 and sys.argv[1].lower() == 'q':
+        print(f"{colorama.Fore.YELLOW}Exiting RAT Finder. Stay vigilant!{colorama.Style.RESET_ALL}")
+        sys.exit(0)
+    
     parser = argparse.ArgumentParser(
         description='RAT Finder: Steganography Detection Tool (v0.2.0)',
         epilog='Part of the 2PAC toolkit - Created by Richard Young'
