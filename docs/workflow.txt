@@ -1,9 +1,0 @@
-This is a placeholder for the workflow image.
-You should replace this with an actual workflow diagram image.
-
-The workflow should illustrate:
-1. The image file validation process
-2. The repair workflow for corrupted images
-3. The progress saving and resumption system
-
-For best results, create a simple flowchart using a tool like draw.io, Lucidchart, or similar.
