@@ -304,8 +304,121 @@ def try_full_decode_check(file_path):
                 return True, "Full decode test passed"
     except Exception as e:
         return False, f"Full decode test failed: {str(e)}"
+        
+def check_visual_corruption(file_path, block_threshold=0.20, uniform_threshold=10, strict_mode=False):
+    """
+    Analyze image content to detect visual corruption like large uniform areas.
+    
+    Args:
+        file_path: Path to the image file
+        block_threshold: Percentage of image that must be uniform to be considered corrupt (0.0-1.0)
+        uniform_threshold: Color variation threshold for considering pixels "uniform"
+        strict_mode: If True, only detect gray/black areas as corruption indicators
+        
+    Returns:
+        (is_visually_corrupt, details)
+    """
+    try:
+        with Image.open(file_path) as img:
+            # Get image dimensions
+            width, height = img.size
+            total_pixels = width * height
+            
+            # Convert to RGB to ensure consistent analysis
+            if img.mode != "RGB":
+                img = img.convert("RGB")
+            
+            # Sample the image (analyzing every pixel would be too slow)
+            # We'll create a grid of sample points - we'll use more samples for more accuracy
+            sample_step = max(1, min(width, height) // 150)  # Adjust based on image size
+            
+            # Track unique colors and their counts
+            color_counts = {}
+            total_samples = 0
+            
+            # Sample the image
+            for y in range(0, height, sample_step):
+                for x in range(0, width, sample_step):
+                    total_samples += 1
+                    pixel = img.getpixel((x, y))
+                    
+                    # Round pixel values to reduce sensitivity to minor variations
+                    rounded_pixel = (
+                        pixel[0] // uniform_threshold * uniform_threshold,
+                        pixel[1] // uniform_threshold * uniform_threshold,
+                        pixel[2] // uniform_threshold * uniform_threshold
+                    )
+                    
+                    if rounded_pixel in color_counts:
+                        color_counts[rounded_pixel] += 1
+                    else:
+                        color_counts[rounded_pixel] = 1
+            
+            # Find the most common color
+            most_common_color = max(color_counts.items(), key=lambda x: x[1])
+            most_common_percentage = most_common_color[1] / total_samples
+            
+            # Check for large blocks of uniform color (potential corruption)
+            if most_common_percentage > block_threshold:
+                # Calculate approximate percentage of the image affected
+                affected_pct = most_common_percentage * 100
+                color_value = most_common_color[0]
+                
+                # Determine if this is likely corruption
+                # Gray/black areas are common in corruption
+                is_dark = sum(color_value) < 3 * uniform_threshold  # Very dark areas
+                
+                # Check if it's a gray area (equal R,G,B values)
+                is_gray = abs(color_value[0] - color_value[1]) < uniform_threshold and \
+                          abs(color_value[1] - color_value[2]) < uniform_threshold and \
+                          abs(color_value[0] - color_value[2]) < uniform_threshold
+                
+                # Only consider mid-range grays as corruption indicators (not white/black)
+                is_mid_gray = is_gray and 30 < sum(color_value)/3 < 220
+                
+                # Special case: almost pure white is often legitimate content
+                is_white = color_value[0] > 240 and color_value[1] > 240 and color_value[2] > 240
+                
+                # Determine likelihood of corruption based on color and percentage
+                if (is_dark or is_mid_gray) and not is_white:
+                    # Higher threshold for white areas since they're common in legitimate images
+                    white_threshold = 0.4  # 40% of image
+                    if is_white and most_common_percentage < white_threshold:
+                        return False, f"Large white area ({affected_pct:.1f}%) but likely not corruption"
+                    
+                    # More likely to be corruption
+                    return True, f"Visual corruption detected: {affected_pct:.1f}% of image is uniform {color_value}"
+                else:
+                    # Could be a legitimate image with a uniform background
+                    return False, f"Large uniform area ({affected_pct:.1f}%) but likely not corruption"
+            
+            # Check for other telltale signs of corruption - but only in strict mode
+            if strict_mode:
+                # 1. Excessive color blocks (fragmentation) - this works well for detecting noise
+                if len(color_counts) > total_samples * 0.85 and total_samples > 200:
+                    return True, f"Excessive color fragmentation detected ({len(color_counts)} colors in {total_samples} samples)"
+                
+                # 2. Check for very specific corruption patterns
+                # Analyze distribution of colors to look for unusual patterns
+                if total_samples > 500:  # Only for larger images with enough samples
+                    # Check if there's an unnatural color distribution
+                    # Normal photos have a more gradual distribution rather than spikes
+                    sorted_counts = sorted(color_counts.values(), reverse=True)
+                    
+                    # Calculate the color distribution ratio
+                    if len(sorted_counts) > 5:
+                        top5_ratio = sum(sorted_counts[:5]) / sum(sorted_counts)
+                        # Usually, the top 5 colors shouldn't dominate more than 80% of the image
+                        # unless it's a graphic or very simple image
+                        if top5_ratio < 0.2 and most_common_percentage < 0.1:
+                            return True, f"Unusual color distribution (possible noise/corruption)"
+                
+            return False, "No visual corruption detected"
+            
+    except Exception as e:
+        return False, f"Error during visual analysis: {str(e)}"
 
-def is_valid_image(file_path, thorough=True, sensitivity='medium', ignore_eof=False):
+def is_valid_image(file_path, thorough=True, sensitivity='medium', ignore_eof=False, check_visual=False, visual_strictness='medium'):
     """
     Validate image file integrity using multiple methods.
     
@@ -314,6 +427,8 @@ def is_valid_image(file_path, thorough=True, sensitivity='medium', ignore_eof=Fa
         thorough: Whether to perform deep structure validation
         sensitivity: 'low', 'medium', or 'high'
         ignore_eof: Whether to ignore missing end-of-file markers
+        check_visual: Whether to perform visual content analysis to detect corruption
+        visual_strictness: 'low', 'medium', or 'high' strictness for visual corruption detection
     
     Returns:
         True if valid, False if corrupt.
@@ -328,6 +443,34 @@ def is_valid_image(file_path, thorough=True, sensitivity='medium', ignore_eof=Fa
             # This catches more corruption issues
             with Image.open(file_path) as img2:
                 img2.load()
+                
+            # If check_visual is enabled, analyze the image content
+            if check_visual:
+                # Set thresholds based on strictness level
+                if visual_strictness == 'low':
+                    # More permissive - only detect very obvious corruption
+                    block_threshold = 0.3  # 30% of the image must be uniform
+                    uniform_threshold = 5  # Smaller color variations are allowed
+                elif visual_strictness == 'high':
+                    # Most strict - catches subtle corruption but may have false positives
+                    block_threshold = 0.15  # Only 15% of the image needs to be uniform
+                    uniform_threshold = 15  # Larger color variations are considered uniform
+                else:  # medium (default)
+                    block_threshold = 0.20  # 20% threshold
+                    uniform_threshold = 10
+                
+                # Check for visual corruption with appropriate thresholds
+                is_visually_corrupt, msg = check_visual_corruption(
+                    file_path, 
+                    block_threshold=block_threshold, 
+                    uniform_threshold=uniform_threshold,
+                    # Only use additional detection methods in high strictness mode
+                    strict_mode=(visual_strictness == 'high')
+                )
+                
+                if is_visually_corrupt:
+                    logging.debug(f"Visual corruption detected in {file_path}: {msg}")
+                    return False
                 
             # If thorough checking is disabled, return after basic check
             if not thorough or sensitivity == 'low':
@@ -450,10 +593,11 @@ def attempt_repair(file_path, backup_dir=None):
 
 def process_file(args):
     """Process a single image file."""
-    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof = args
+    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness = args
     
     # Check if the image is valid
-    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity, ignore_eof=ignore_eof)
+    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity, 
+                             ignore_eof=ignore_eof, check_visual=check_visual, visual_strictness=visual_strictness)
     
     if not is_valid and repair_mode:
         # Try to repair the file
@@ -601,7 +745,8 @@ def find_image_files(directory, formats, recursive=True):
 def process_images(directory, formats, dry_run=True, repair=False, 
                   max_workers=None, recursive=True, move_to=None, repair_dir=None,
                   save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR,
-                  thorough_check=False, sensitivity='medium', ignore_eof=False):
+                  thorough_check=False, sensitivity='medium', ignore_eof=False, check_visual=False,
+                  visual_strictness='medium'):
     """Find corrupt image files and optionally repair, delete, or move them."""
     start_time = time.time()
     
@@ -657,7 +802,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         logging.info(f"Created directory for backup files: {repair_dir}")
     
     # Prepare input arguments for workers
-    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof) for file_path in image_files]
+    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness) for file_path in image_files]
     
     # Process files in parallel
     logging.info("Processing files in parallel...")
@@ -837,6 +982,10 @@ def main():
                                 help='Set validation sensitivity level: low (basic checks), medium (standard checks), high (most strict)')
     validation_group.add_argument('--ignore-eof', action='store_true',
                                 help='Ignore missing end-of-file markers (useful for truncated but viewable files)')
+    validation_group.add_argument('--check-visual', action='store_true',
+                                help='Analyze image content to detect visible corruption like gray/black areas')
+    validation_group.add_argument('--visual-strictness', type=str, choices=['low', 'medium', 'high'], default='medium',
+                                help='Set strictness level for visual corruption detection: low (most permissive), medium (balanced), high (only clear corruption)')
     
     # Progress saving options
     progress_group = parser.add_argument_group('Progress options')
@@ -917,13 +1066,25 @@ def main():
         else:
             print(f"❌ External tools: {msg}")
             
+        # Visual corruption check
+        print(f"\n{colorama.Fore.CYAN}Visual content analysis:{colorama.Style.RESET_ALL}")
+        is_visually_corrupt, vis_msg = check_visual_corruption(file_path)
+        if not is_visually_corrupt:
+            print(f"✓ No visual corruption detected: {vis_msg}")
+        else:
+            print(f"❌ {vis_msg}")
+            
         # Final verdict
         print(f"\n{colorama.Fore.CYAN}Final verdict:{colorama.Style.RESET_ALL}")
         is_valid_basic = is_valid_image(file_path, thorough=False)
         is_valid_thorough = is_valid_image(file_path, thorough=True)
+        is_valid_visual = not is_visually_corrupt
         
-        if is_valid_basic and is_valid_thorough:
+        if is_valid_basic and is_valid_thorough and is_valid_visual:
             print(f"{colorama.Fore.GREEN}This file appears to be valid by all checks.{colorama.Style.RESET_ALL}")
+        elif not is_valid_visual:
+            print(f"{colorama.Fore.RED}This file shows visible corruption in the image content.{colorama.Style.RESET_ALL}")
+            print(f"Recommendation: Use --check-visual to detect this type of corruption.")
         elif is_valid_basic and not is_valid_thorough:
             print(f"{colorama.Fore.YELLOW}This file passes basic validation but fails thorough checks.{colorama.Style.RESET_ALL}")
             print(f"Recommendation: Use --thorough mode to detect this type of corruption.")
@@ -1054,6 +1215,18 @@ def main():
     if args.ignore_eof:
         eof_str = f"{colorama.Fore.CYAN}IGNORING EOF MARKERS{colorama.Style.RESET_ALL}: Allowing truncated but viewable files"
         logging.info(eof_str)
+        
+    # Show visual corruption checking status
+    if args.check_visual:
+        strictness_color = {
+            'low': colorama.Fore.GREEN,
+            'medium': colorama.Fore.YELLOW,
+            'high': colorama.Fore.RED
+        }.get(args.visual_strictness, colorama.Fore.YELLOW)
+        
+        visual_str = f"{colorama.Fore.MAGENTA}VISUAL CHECK{colorama.Style.RESET_ALL}: " + \
+                     f"Analyzing image content (strictness: {strictness_color}{args.visual_strictness.upper()}{colorama.Style.RESET_ALL})"
+        logging.info(visual_str)
     
     # Show which formats we're checking
     format_list = ", ".join(formats)
@@ -1075,7 +1248,9 @@ def main():
             progress_dir=args.progress_dir,
             thorough_check=args.thorough,
             sensitivity=args.sensitivity,
-            ignore_eof=args.ignore_eof
+            ignore_eof=args.ignore_eof,
+            check_visual=args.check_visual,
+            visual_strictness=args.visual_strictness
         )
         
         # Colorful summary
