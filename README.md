@@ -839,9 +839,9 @@ If you encounter any issues or have questions, please file an issue on the GitHu
 
 ## 🕊️ In Memory of Jeff Young
 
-This project is dedicated to the memory of Jeff Young, who loved Tupac's music and embodied his spirit of resilience and creativity. Jeff's appreciation for art and his ability to find beauty even in imperfection inspired the core purpose of this tool. 
+This project is dedicated to the memory of Jeff Young, who loved Tupac's music and embodied his spirit of bringing people together. Like my brother, Jeff would always reach out to help others, making connections and building community wherever he went. His compassion for people and willingness to always lend a hand to those in need are qualities that inspired this tool's purpose - helping others preserve their precious memories.
 
-May your photos always be as bright and clear as the memories they capture.
+May your photos always be as bright and clear as the memories they capture, and may we all strive to connect and help others as Jeff did.
 
 ---
 

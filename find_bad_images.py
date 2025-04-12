@@ -4,8 +4,9 @@
 Author: Richard Young
 License: MIT
 
-In memory of Jeff Young, who loved Tupac's music and inspired this project.
-May your photos always be as clear as the memories they capture.
+In memory of Jeff Young, who loved Tupac's music and lived by his values of helping others.
+Like Tupac, Jeff believed in bringing people together and always lending a hand to those in need.
+May your photos always be as clear as the memories they capture, and may we all strive to help others as Jeff did.
 """
 
 import os
@@ -957,7 +958,7 @@ def print_banner():
     ██████╔╝██║     ██║  ██║╚██████╗
     ╚═════╝ ╚═╝     ╚═╝  ╚═╝ ╚═════╝
     The Picture Analyzer & Corruption killer
-    In memory of Jeff Young - Preserving memories through images
+    In memory of Jeff Young - Bringing people together & helping others
     """
     
     if 'colorama' in sys.modules:
