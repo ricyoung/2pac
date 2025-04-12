@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """
-Bad Image Finder - A tool to find and clean up corrupt image files.
+2PAC: The Picture Analyzer & Corruption killer
 Author: Richard Young
 License: MIT
+
+In memory of Jeff Young, who loved Tupac's music and inspired this project.
+May your photos always be as clear as the memories they capture.
 """
 
 import os
@@ -954,6 +957,7 @@ def print_banner():
     ██████╔╝██║     ██║  ██║╚██████╗
     ╚═════╝ ╚═╝     ╚═╝  ╚═╝ ╚═════╝
     The Picture Analyzer & Corruption killer
+    In memory of Jeff Young - Preserving memories through images
     """
     
     if 'colorama' in sys.modules:

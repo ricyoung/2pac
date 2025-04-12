@@ -1,6 +1,11 @@
 """
 2PAC quotes adapted for corrupt image detection
+
+In memory of Jeff Young - your appreciation for Tupac's artistry lives on in this project.
 """
+
+# Special memorial quote - this will be selected more frequently
+MEMORIAL_QUOTE = "Death is not the greatest loss in life. The greatest loss is what dies inside while still alive. Preserve your memories, they're irreplaceable."
 
 QUOTES = [
     "Only God can judge your images now.",
@@ -20,4 +25,9 @@ QUOTES = [
     "Behind every bad JPEG is a missing header marker.",
     "The only thing that comes guaranteed is that your JPEGs will be validated.",
     "We scanned through the good times and the bad, the corrupted and the perfect.",
+    "Pictures are preserved memories, framed in time, a place to return when you need to remember.",
+    "Life goes on: your memories are captured in these images.",
+    MEMORIAL_QUOTE,  # Include the memorial quote
+    MEMORIAL_QUOTE,  # Added twice to increase probability of selection
+    MEMORIAL_QUOTE,  # Added three times for higher chance of selection
 ]
