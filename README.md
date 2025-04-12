@@ -99,7 +99,7 @@
   - 🔧 **Repair** - Attempt to fix corrupted images
   - ⏸️ **Resume** - Continue interrupted scans from where they left off
 - **Security Tools**:
-  - 🕵️ **[RAT Finder](docs/rat_finder.md)** - Detects hidden data (steganography) in images
+  - 🕵️ **[RAT Finder](./docs/rat_finder.md)** - Detects hidden data (steganography) in images
   - 🔐 Multiple steganography detection methods including LSB, ELA and histogram analysis
   - 📊 Visual reporting for easy analysis of suspicious images
 - **Beautiful Interface**:
@@ -711,7 +711,7 @@ The 2PAC toolkit now includes a powerful steganography detection tool called **R
 ./rat_finder.py --check-file suspicious.jpg --visual-reports ./reports
 ```
 
-[Learn more about RAT Finder and steganography detection →](docs/rat_finder.md)
+[Learn more about RAT Finder and steganography detection →](./docs/rat_finder.md)
 
 ## 🎚️ New Validation System
 
