@@ -854,7 +854,7 @@ May your photos always be as bright and clear as the memories they capture, and 
 <div align="center">
 <img src="https://raw.githubusercontent.com/ricyoung/2pac/main/preview.gif" alt="2PAC in action" width="700">
 
-*"You know they'll never take me alive, I'm gettin' money. You know they'll never take these corrupt JPEGs alive."*
+*"You know these corrupt JPEGs will never survive. We're on a mission and our reputation's live."*
 
 Made with ❤️ by Richard Young
 </div>

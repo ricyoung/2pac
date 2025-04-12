@@ -27,6 +27,7 @@ QUOTES = [
     "We scanned through the good times and the bad, the corrupted and the perfect.",
     "Pictures are preserved memories, framed in time, a place to return when you need to remember.",
     "Life goes on: your memories are captured in these images.",
+    "You know these corrupt JPEGs will never survive. We're on a mission and our reputation's live.",
     MEMORIAL_QUOTE,  # Include the memorial quote
     MEMORIAL_QUOTE,  # Added twice to increase probability of selection
     MEMORIAL_QUOTE,  # Added three times for higher chance of selection
