@@ -642,13 +642,24 @@ def get_session_id(directory, formats, recursive):
     
     return hash_obj.hexdigest()[:12]  # Use first 12 chars of hash
 
-def save_progress(session_id, directory, formats, recursive, processed_files, 
+def _deduplicate(seq):
+    """Return a list with duplicates removed while preserving order."""
+    seen = set()
+    deduped = []
+    for item in seq:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
+
+
+def save_progress(session_id, directory, formats, recursive, processed_files,
                  bad_files, repaired_files, progress_dir=DEFAULT_PROGRESS_DIR):
     """Save the current progress to a file."""
     # Create progress directory if it doesn't exist
     if not os.path.exists(progress_dir):
         os.makedirs(progress_dir, exist_ok=True)
-    
+
     # Create a progress state object
     progress_state = {
         'version': VERSION,
@@ -656,9 +667,9 @@ def save_progress(session_id, directory, formats, recursive, processed_files,
         'directory': str(directory),
         'formats': formats,
         'recursive': recursive,
-        'processed_files': processed_files,
-        'bad_files': bad_files,
-        'repaired_files': repaired_files
+        'processed_files': _deduplicate(processed_files),
+        'bad_files': _deduplicate(bad_files),
+        'repaired_files': _deduplicate(repaired_files)
     }
     
     # Save to file
@@ -679,6 +690,11 @@ def load_progress(session_id, progress_dir=DEFAULT_PROGRESS_DIR):
     try:
         with open(progress_file, 'rb') as f:
             progress_state = pickle.load(f)
+
+        # Remove any duplicate entries from lists
+        for key in ('processed_files', 'bad_files', 'repaired_files'):
+            if key in progress_state:
+                progress_state[key] = _deduplicate(progress_state[key])
             
         # Check version compatibility
         if progress_state.get('version', '0.0.0') != VERSION:
@@ -828,13 +844,19 @@ def process_images(directory, formats, dry_run=True, repair=False,
             # Save progress periodically
             current_time = time.time()
             if save_progress_interval > 0 and current_time - last_progress_save >= save_progress_interval * 60:
-                # Get processed files up to the current position
-                newly_processed = image_files[:self.n]
-                processed_files.extend(newly_processed)
-                
-                # Save the progress
-                save_progress(session_id, directory, formats, recursive, 
-                             processed_files, bad_files, repaired_files, progress_dir)
+                # Save the progress using the list of files that have actually
+                # completed processing. ``processed_files`` is updated as each
+                # future finishes so we can safely persist it as-is.
+                save_progress(
+                    session_id,
+                    directory,
+                    formats,
+                    recursive,
+                    processed_files,
+                    bad_files,
+                    repaired_files,
+                    progress_dir,
+                )
                 
                 last_progress_save = current_time
                 logging.debug(f"Progress saved at {self.n} / {len(image_files)} files")
