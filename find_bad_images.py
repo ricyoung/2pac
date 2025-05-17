@@ -642,12 +642,15 @@ def get_session_id(directory, formats, recursive):
     
     return hash_obj.hexdigest()[:12]  # Use first 12 chars of hash
 
-def save_progress(session_id, directory, formats, recursive, processed_files, 
+def save_progress(session_id, directory, formats, recursive, processed_files,
                  bad_files, repaired_files, progress_dir=DEFAULT_PROGRESS_DIR):
     """Save the current progress to a file."""
     # Create progress directory if it doesn't exist
     if not os.path.exists(progress_dir):
         os.makedirs(progress_dir, exist_ok=True)
+
+    # Remove duplicates while preserving order
+    processed_files = list(dict.fromkeys(processed_files))
     
     # Create a progress state object
     progress_state = {
@@ -775,7 +778,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         try:
             progress = load_progress(resume_session, progress_dir)
             if progress and progress['directory'] == str(directory) and progress['formats'] == formats:
-                processed_files = progress['processed_files']
+                processed_files = list(dict.fromkeys(progress['processed_files']))
                 bad_files = progress['bad_files']
                 repaired_files = progress['repaired_files']
                 logging.info(f"Resuming session: {len(processed_files)} files already processed")
@@ -828,13 +831,19 @@ def process_images(directory, formats, dry_run=True, repair=False,
             # Save progress periodically
             current_time = time.time()
             if save_progress_interval > 0 and current_time - last_progress_save >= save_progress_interval * 60:
-                # Get processed files up to the current position
-                newly_processed = image_files[:self.n]
-                processed_files.extend(newly_processed)
-                
-                # Save the progress
-                save_progress(session_id, directory, formats, recursive, 
-                             processed_files, bad_files, repaired_files, progress_dir)
+                # Save the progress using the list of files that have actually
+                # completed processing. ``processed_files`` is updated as each
+                # future finishes so we can safely persist it as-is.
+                save_progress(
+                    session_id,
+                    directory,
+                    formats,
+                    recursive,
+                    processed_files,
+                    bad_files,
+                    repaired_files,
+                    progress_dir,
+                )
                 
                 last_progress_save = current_time
                 logging.debug(f"Progress saved at {self.n} / {len(image_files)} files")
