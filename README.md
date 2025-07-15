@@ -693,7 +693,7 @@ The 2PAC toolkit now includes a powerful steganography detection tool called **R
 <table>
 <tr>
 <td width="80" align="center">🔍</td>
-<td><b>Multiple Detection Methods</b><br>Combines six different analysis techniques to detect various steganography approaches, including LSB, DCT manipulation, and metadata hiding</td>
+<td><b>Multiple Detection Methods</b><br>Combines seven different analysis techniques to detect various steganography approaches, including LSB, DCT manipulation, metadata hiding, and trailing data after EOF</td>
 </tr>
 <tr>
 <td align="center">🔄</td>
