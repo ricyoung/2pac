@@ -18,7 +18,7 @@ RAT Finder is a powerful steganography detection tool designed to identify hidde
 
 ## 🚀 Features
 
-- **Multi-technique Detection:** Employs five different analysis methods to catch varied steganographic techniques
+- **Multi-technique Detection:** Employs seven different analysis methods to catch varied steganographic techniques
 - **Confidence-based Reporting:** Assigns confidence scores to help prioritize suspicious files
 - **Visual Analysis Reports:** Generates detailed visual reports for suspicious images
 - **Adjustable Sensitivity:** Customize detection thresholds to balance false positives and negatives
@@ -236,6 +236,33 @@ levels across channels.
 </tr>
 </table>
 
+### 7. EOF/Trailing Data Analysis
+
+<table>
+<tr>
+<td width="60%" valign="top">
+
+**What it detects:**
+- Bytes appended after the official end-of-file marker
+- Hidden payloads stored after JPEG or PNG images
+
+**Implementation details:**
+- Locates the final EOF marker (`FFD9` for JPEG, `IEND` for PNG)
+- Counts any bytes that follow the marker
+- Confidence increases with the size of trailing data
+
+</td>
+<td width="40%">
+
+```
+JPEG ... FFD9 <extra bytes>
+PNG  ... IEND\xAE\x42\x60\x82 <extra bytes>
+```
+
+</td>
+</tr>
+</table>
+
 ## 📊 Confidence Scoring
 
 RAT Finder uses a weighted confidence scoring system:
@@ -246,7 +273,8 @@ RAT Finder uses a weighted confidence scoring system:
 | Error Level Analysis (ELA) | 20% | Effective for JPEG manipulations |
 | Histogram Analysis | 20% | Effective for DCT and statistical anomalies |
 | Visual Noise Analysis | 15% | Good for detecting spread spectrum methods |
-| File Size Analysis | 10% | Identifies appended data and size anomalies |
+| File Size Analysis | 10% | Identifies disproportionate file sizes |
+| Trailing Data Analysis | 10% | Detects bytes after end-of-file markers |
 | Metadata Analysis | 10% | Finds hidden content in file metadata |
 
 The overall confidence score is calculated as a weighted sum of individual detection methods. Images with scores above the threshold (dependent on sensitivity setting) are flagged as suspicious.
@@ -334,7 +362,7 @@ The following table shows RAT Finder's effectiveness against various steganograp
 | **JPEG Manipulation** | ★★★★☆ (High) | Error Level Analysis, Visual Noise Analysis |
 | **Palette-Based** | ★★★☆☆ (Moderate) | Histogram Analysis, File Size Analysis |
 | **Metadata/Header** | ★★★★★ (Very High) | Metadata Analysis |
-| **Appended Data** | ★★★★★ (Very High) | File Size Analysis |
+| **Appended Data** | ★★★★★ (Very High) | Trailing Data Analysis |
 | **Spread Spectrum** | ★★☆☆☆ (Low) | Visual Noise Analysis |
 | **Error-Correcting Code** | ★★☆☆☆ (Low) | LSB Analysis, Histogram Analysis |
 
