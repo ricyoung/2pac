@@ -14,6 +14,7 @@ import sys
 import argparse
 import concurrent.futures
 import logging
+import tempfile
 import numpy as np
 from pathlib import Path
 from PIL import Image
