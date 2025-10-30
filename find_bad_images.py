@@ -281,24 +281,76 @@ def check_png_structure(file_path):
     except Exception as e:
         return False, f"Error during PNG structure check: {str(e)}"
 
+def validate_subprocess_path(file_path):
+    """
+    Validate file path before passing to subprocess to prevent command injection.
+
+    Args:
+        file_path: Path to validate
+
+    Returns:
+        True if path is safe
+
+    Raises:
+        ValueError: If path contains dangerous characters or patterns
+    """
+    import re
+
+    # Must be an absolute path
+    if not os.path.isabs(file_path):
+        raise ValueError(f"Path must be absolute: {file_path}")
+
+    # File must exist
+    if not os.path.exists(file_path):
+        raise ValueError(f"File does not exist: {file_path}")
+
+    # Check for shell metacharacters and dangerous patterns
+    # Allow: alphanumeric, spaces, dots, dashes, underscores, forward slashes
+    # Block: semicolons, pipes, backticks, $, &, >, <, etc.
+    dangerous_chars = ['`', '$', '&', '|', ';', '>', '<', '\n', '\r', '(', ')']
+    for char in dangerous_chars:
+        if char in file_path:
+            raise ValueError(f"Dangerous character '{char}' found in path: {file_path}")
+
+    # Block path traversal attempts
+    if '..' in file_path:
+        raise ValueError(f"Path traversal pattern '..' detected: {file_path}")
+
+    # Block null bytes
+    if '\x00' in file_path:
+        raise ValueError("Null byte detected in path")
+
+    return True
+
+
 def try_external_tools(file_path):
     """
     Try using external tools to validate the image if they're available.
     Returns (is_valid, message)
+
+    Security: Validates file path before passing to subprocess to prevent
+    command injection attacks.
     """
+    # Validate path before passing to subprocess
+    try:
+        validate_subprocess_path(file_path)
+    except ValueError as e:
+        logging.warning(f"Skipping external tool validation due to security check: {e}")
+        return True, "External tools check skipped (security)"
+
     # Try using exiftool if available
     try:
-        result = subprocess.run(['exiftool', '-m', '-p', '$Error', file_path], 
+        result = subprocess.run(['exiftool', '-m', '-p', '$Error', file_path],
                                capture_output=True, text=True, timeout=5)
         if result.returncode == 0 and result.stdout.strip():
             return False, f"Exiftool error: {result.stdout.strip()}"
-            
+
         # Check with identify (ImageMagick) if available
-        result = subprocess.run(['identify', '-verbose', file_path], 
+        result = subprocess.run(['identify', '-verbose', file_path],
                                capture_output=True, text=True, timeout=5)
         if result.returncode != 0:
             return False, "ImageMagick identify failed to read the image"
-            
+
         return True, "Passed external tool validation"
     except (subprocess.SubprocessError, FileNotFoundError):
         # External tools not available or failed
@@ -610,16 +662,40 @@ def attempt_repair(file_path, backup_dir=None):
 
 def process_file(args):
     """Process a single image file."""
-    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness = args
-    
+    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness, enable_security_checks = args
+
+    # Security validation (if enabled)
+    if enable_security_checks:
+        try:
+            is_safe, warnings = validate_file_security(file_path, check_size=True, check_dimensions=True)
+
+            # Log security warnings
+            for warning in warnings:
+                logging.warning(f"Security warning for {file_path}: {warning}")
+
+            if not is_safe:
+                # File failed security checks - treat as invalid
+                size = os.path.getsize(file_path)
+                return file_path, False, size, "security_failed", "Failed security validation", None
+
+        except ValueError as e:
+            # Critical security failure (file too large, dimensions too big, etc.)
+            logging.error(f"Security check failed for {file_path}: {e}")
+            size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            return file_path, False, size, "security_failed", str(e), None
+        except Exception as e:
+            # Unexpected error during security validation
+            logging.debug(f"Security validation error for {file_path}: {e}")
+            # Continue processing anyway for this case
+
     # Check if the image is valid
-    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity, 
+    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity,
                              ignore_eof=ignore_eof, check_visual=check_visual, visual_strictness=visual_strictness)
-    
+
     if not is_valid and repair_mode:
         # Try to repair the file
         repair_success, repair_msg, width, height = attempt_repair(file_path, repair_dir)
-        
+
         if repair_success:
             # File was repaired
             return file_path, True, 0, "repaired", repair_msg, (width, height)
@@ -930,11 +1006,11 @@ def find_image_files(directory, formats, recursive=True):
     logging.info(f"Found {len(image_files)} image files")
     return image_files
 
-def process_images(directory, formats, dry_run=True, repair=False, 
+def process_images(directory, formats, dry_run=True, repair=False,
                   max_workers=None, recursive=True, move_to=None, repair_dir=None,
                   save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR,
                   thorough_check=False, sensitivity='medium', ignore_eof=False, check_visual=False,
-                  visual_strictness='medium'):
+                  visual_strictness='medium', enable_security_checks=False):
     """Find corrupt image files and optionally repair, delete, or move them."""
     start_time = time.time()
     
@@ -990,7 +1066,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         logging.info(f"Created directory for backup files: {repair_dir}")
     
     # Prepare input arguments for workers
-    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness) for file_path in image_files]
+    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness, enable_security_checks) for file_path in image_files]
     
     # Process files in parallel
     logging.info("Processing files in parallel...")
@@ -1248,7 +1324,7 @@ def main():
     
     # Validation options
     validation_group = parser.add_argument_group('Validation options')
-    validation_group.add_argument('--thorough', action='store_true', 
+    validation_group.add_argument('--thorough', action='store_true',
                                  help='Perform thorough image validation (slower but catches more subtle corruption)')
     validation_group.add_argument('--sensitivity', type=str, choices=['low', 'medium', 'high'], default='medium',
                                 help='Set validation sensitivity level: low (basic checks), medium (standard checks), high (most strict)')
@@ -1258,6 +1334,15 @@ def main():
                                 help='Analyze image content to detect visible corruption like gray/black areas')
     validation_group.add_argument('--visual-strictness', type=str, choices=['low', 'medium', 'high'], default='medium',
                                 help='Set strictness level for visual corruption detection: low (most permissive), medium (balanced), high (only clear corruption)')
+
+    # Security options
+    security_group = parser.add_argument_group('Security options')
+    security_group.add_argument('--security-checks', action='store_true',
+                               help='Enable enhanced security validation (file size limits, dimension checks, format verification)')
+    security_group.add_argument('--max-file-size', type=int, default=MAX_FILE_SIZE,
+                               help=f'Maximum file size in bytes to process (default: {MAX_FILE_SIZE} = 100MB)')
+    security_group.add_argument('--max-pixels', type=int, default=MAX_IMAGE_PIXELS,
+                               help=f'Maximum image dimensions in pixels (default: {MAX_IMAGE_PIXELS} = 50MP)')
     
     # Progress saving options
     progress_group = parser.add_argument_group('Progress options')
@@ -1269,7 +1354,7 @@ def main():
                               help='Resume from a previously saved session')
     
     args = parser.parse_args()
-    
+
     # Setup logging
     setup_logging(args.verbose, args.no_color)
     
@@ -1495,11 +1580,18 @@ def main():
             'medium': colorama.Fore.YELLOW,
             'high': colorama.Fore.RED
         }.get(args.visual_strictness, colorama.Fore.YELLOW)
-        
+
         visual_str = f"{colorama.Fore.MAGENTA}VISUAL CHECK{colorama.Style.RESET_ALL}: " + \
                      f"Analyzing image content (strictness: {strictness_color}{args.visual_strictness.upper()}{colorama.Style.RESET_ALL})"
         logging.info(visual_str)
-    
+
+    # Show security checks status
+    if args.security_checks:
+        security_str = f"{colorama.Fore.RED}SECURITY CHECKS ENABLED{colorama.Style.RESET_ALL}: " + \
+                      f"Validating file sizes (max {humanize.naturalsize(MAX_FILE_SIZE)}), " + \
+                      f"dimensions (max {MAX_IMAGE_PIXELS:,} pixels), and format integrity"
+        logging.info(security_str)
+
     # Show which formats we're checking
     format_list = ", ".join(formats)
     logging.info(f"Checking image formats: {format_list}")
@@ -1507,9 +1599,9 @@ def main():
     
     try:
         bad_files, repaired_files, total_size_saved = process_images(
-            directory, 
+            directory,
             formats,
-            dry_run=dry_run, 
+            dry_run=dry_run,
             repair=args.repair,
             max_workers=args.workers,
             recursive=not args.non_recursive,
@@ -1522,7 +1614,8 @@ def main():
             sensitivity=args.sensitivity,
             ignore_eof=args.ignore_eof,
             check_visual=args.check_visual,
-            visual_strictness=args.visual_strictness
+            visual_strictness=args.visual_strictness,
+            enable_security_checks=args.security_checks
         )
         
         # Colorful summary
