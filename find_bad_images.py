@@ -1027,7 +1027,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         try:
             progress = load_progress(resume_session, progress_dir)
             if progress and progress['directory'] == str(directory) and progress['formats'] == formats:
-                processed_files = progress['processed_files']
+                processed_files = list(dict.fromkeys(progress['processed_files']))
                 bad_files = progress['bad_files']
                 repaired_files = progress['repaired_files']
                 logging.info(f"Resuming session: {len(processed_files)} files already processed")
