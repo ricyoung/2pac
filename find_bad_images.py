@@ -17,7 +17,6 @@ import time
 import io
 import json
 import shutil
-import pickle
 import hashlib
 import struct
 import tempfile
@@ -67,7 +66,13 @@ REPAIRABLE_FORMATS = ['JPEG', 'PNG', 'GIF']
 DEFAULT_PROGRESS_DIR = os.path.expanduser("~/.bad_image_finder/progress")
 
 # Current version
-VERSION = "1.5.0"
+VERSION = "1.5.1"
+
+# Security: Maximum file size to process (100MB) to prevent DoS
+MAX_FILE_SIZE = 100 * 1024 * 1024
+
+# Security: Maximum image dimensions (50 megapixels) to prevent decompression bombs
+MAX_IMAGE_PIXELS = 50000 * 50000
 
 def setup_logging(verbose, no_color=False):
     level = logging.DEBUG if verbose else logging.INFO
@@ -276,24 +281,76 @@ def check_png_structure(file_path):
     except Exception as e:
         return False, f"Error during PNG structure check: {str(e)}"
 
+def validate_subprocess_path(file_path):
+    """
+    Validate file path before passing to subprocess to prevent command injection.
+
+    Args:
+        file_path: Path to validate
+
+    Returns:
+        True if path is safe
+
+    Raises:
+        ValueError: If path contains dangerous characters or patterns
+    """
+    import re
+
+    # Must be an absolute path
+    if not os.path.isabs(file_path):
+        raise ValueError(f"Path must be absolute: {file_path}")
+
+    # File must exist
+    if not os.path.exists(file_path):
+        raise ValueError(f"File does not exist: {file_path}")
+
+    # Check for shell metacharacters and dangerous patterns
+    # Allow: alphanumeric, spaces, dots, dashes, underscores, forward slashes
+    # Block: semicolons, pipes, backticks, $, &, >, <, etc.
+    dangerous_chars = ['`', '$', '&', '|', ';', '>', '<', '\n', '\r', '(', ')']
+    for char in dangerous_chars:
+        if char in file_path:
+            raise ValueError(f"Dangerous character '{char}' found in path: {file_path}")
+
+    # Block path traversal attempts
+    if '..' in file_path:
+        raise ValueError(f"Path traversal pattern '..' detected: {file_path}")
+
+    # Block null bytes
+    if '\x00' in file_path:
+        raise ValueError("Null byte detected in path")
+
+    return True
+
+
 def try_external_tools(file_path):
     """
     Try using external tools to validate the image if they're available.
     Returns (is_valid, message)
+
+    Security: Validates file path before passing to subprocess to prevent
+    command injection attacks.
     """
+    # Validate path before passing to subprocess
+    try:
+        validate_subprocess_path(file_path)
+    except ValueError as e:
+        logging.warning(f"Skipping external tool validation due to security check: {e}")
+        return True, "External tools check skipped (security)"
+
     # Try using exiftool if available
     try:
-        result = subprocess.run(['exiftool', '-m', '-p', '$Error', file_path], 
+        result = subprocess.run(['exiftool', '-m', '-p', '$Error', file_path],
                                capture_output=True, text=True, timeout=5)
         if result.returncode == 0 and result.stdout.strip():
             return False, f"Exiftool error: {result.stdout.strip()}"
-            
+
         # Check with identify (ImageMagick) if available
-        result = subprocess.run(['identify', '-verbose', file_path], 
+        result = subprocess.run(['identify', '-verbose', file_path],
                                capture_output=True, text=True, timeout=5)
         if result.returncode != 0:
             return False, "ImageMagick identify failed to read the image"
-            
+
         return True, "Passed external tool validation"
     except (subprocess.SubprocessError, FileNotFoundError):
         # External tools not available or failed
@@ -605,16 +662,40 @@ def attempt_repair(file_path, backup_dir=None):
 
 def process_file(args):
     """Process a single image file."""
-    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness = args
-    
+    file_path, repair_mode, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness, enable_security_checks = args
+
+    # Security validation (if enabled)
+    if enable_security_checks:
+        try:
+            is_safe, warnings = validate_file_security(file_path, check_size=True, check_dimensions=True)
+
+            # Log security warnings
+            for warning in warnings:
+                logging.warning(f"Security warning for {file_path}: {warning}")
+
+            if not is_safe:
+                # File failed security checks - treat as invalid
+                size = os.path.getsize(file_path)
+                return file_path, False, size, "security_failed", "Failed security validation", None
+
+        except ValueError as e:
+            # Critical security failure (file too large, dimensions too big, etc.)
+            logging.error(f"Security check failed for {file_path}: {e}")
+            size = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            return file_path, False, size, "security_failed", str(e), None
+        except Exception as e:
+            # Unexpected error during security validation
+            logging.debug(f"Security validation error for {file_path}: {e}")
+            # Continue processing anyway for this case
+
     # Check if the image is valid
-    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity, 
+    is_valid = is_valid_image(file_path, thorough=thorough_check, sensitivity=sensitivity,
                              ignore_eof=ignore_eof, check_visual=check_visual, visual_strictness=visual_strictness)
-    
+
     if not is_valid and repair_mode:
         # Try to repair the file
         repair_success, repair_msg, width, height = attempt_repair(file_path, repair_dir)
-        
+
         if repair_success:
             # File was repaired
             return file_path, True, 0, "repaired", repair_msg, (width, height)
@@ -633,14 +714,143 @@ def get_session_id(directory, formats, recursive):
     dir_path = str(directory).encode('utf-8')
     formats_str = ",".join(sorted(formats)).encode('utf-8')
     recursive_str = str(recursive).encode('utf-8')
-    
-    # Create a hash of the parameters
-    hash_obj = hashlib.md5()
+
+    # Use SHA256 instead of MD5 for better security
+    # MD5 is cryptographically broken and should not be used
+    hash_obj = hashlib.sha256()
     hash_obj.update(dir_path)
     hash_obj.update(formats_str)
     hash_obj.update(recursive_str)
-    
-    return hash_obj.hexdigest()[:12]  # Use first 12 chars of hash
+
+    return hash_obj.hexdigest()[:16]  # Use first 16 chars of hash for uniqueness
+
+def _deduplicate(seq):
+    """Return a list with duplicates removed while preserving order."""
+    seen = set()
+    deduped = []
+    for item in seq:
+        if item not in seen:
+            deduped.append(item)
+            seen.add(item)
+    return deduped
+
+
+def validate_file_security(file_path, check_size=True, check_dimensions=True):
+    """
+    Perform security validation on a file before processing.
+
+    Args:
+        file_path: Path to the file
+        check_size: Whether to check file size limits
+        check_dimensions: Whether to check image dimension limits
+
+    Returns:
+        (is_safe, warnings) - tuple of boolean and list of warning messages
+
+    Raises:
+        ValueError: If file fails critical security checks
+    """
+    warnings = []
+
+    # Check if file exists
+    if not os.path.exists(file_path):
+        raise ValueError(f"File does not exist: {file_path}")
+
+    # Check file size to prevent DoS via huge files
+    if check_size:
+        file_size = os.path.getsize(file_path)
+        if file_size > MAX_FILE_SIZE:
+            raise ValueError(f"File too large ({file_size} bytes, max {MAX_FILE_SIZE}). "
+                           f"This could indicate a malicious file or decompression bomb.")
+
+        # Warn about suspiciously large files (over 10MB for images is unusual)
+        if file_size > 10 * 1024 * 1024:
+            warnings.append(f"Large file size: {humanize.naturalsize(file_size)}")
+
+    # Check image dimensions to prevent decompression bombs
+    if check_dimensions:
+        try:
+            with Image.open(file_path) as img:
+                width, height = img.size
+                total_pixels = width * height
+
+                if total_pixels > MAX_IMAGE_PIXELS:
+                    raise ValueError(f"Image dimensions too large ({width}x{height} = {total_pixels} pixels, "
+                                   f"max {MAX_IMAGE_PIXELS}). This could be a decompression bomb attack.")
+
+                # Warn about very large images
+                if total_pixels > 10000 * 10000:
+                    warnings.append(f"Large image dimensions: {width}x{height}")
+
+                # Check for format mismatch (file extension vs actual format)
+                actual_format = img.format
+                expected_formats = []
+                for fmt, extensions in SUPPORTED_FORMATS.items():
+                    if file_path.lower().endswith(extensions):
+                        expected_formats.append(fmt)
+
+                if actual_format and expected_formats and actual_format not in expected_formats:
+                    warnings.append(f"Format mismatch: file has '{file_path.split('.')[-1]}' extension "
+                                  f"but is actually '{actual_format}' format")
+
+        except UnidentifiedImageError:
+            raise ValueError(f"Cannot identify image format - file may be corrupted or malicious")
+        except Exception as e:
+            raise ValueError(f"Error validating image: {str(e)}")
+
+    return True, warnings
+
+
+def calculate_file_hash(file_path, algorithm='sha256'):
+    """
+    Calculate cryptographic hash of a file.
+
+    Args:
+        file_path: Path to the file
+        algorithm: Hash algorithm to use (sha256, sha512, etc.)
+
+    Returns:
+        Hexadecimal hash string
+    """
+    hash_obj = hashlib.new(algorithm)
+
+    # Read file in chunks to handle large files
+    with open(file_path, 'rb') as f:
+        for chunk in iter(lambda: f.read(4096), b''):
+            hash_obj.update(chunk)
+
+    return hash_obj.hexdigest()
+
+
+def safe_join_path(base_dir, user_path):
+    """
+    Safely join paths and prevent path traversal attacks.
+
+    Args:
+        base_dir: Base directory (trusted)
+        user_path: User-provided path component (untrusted)
+
+    Returns:
+        Safe absolute path within base_dir
+
+    Raises:
+        ValueError: If path traversal is detected
+    """
+    # Normalize base directory
+    base_dir = os.path.abspath(base_dir)
+
+    # Join paths
+    full_path = os.path.normpath(os.path.join(base_dir, user_path))
+
+    # Resolve any symlinks
+    full_path = os.path.abspath(full_path)
+
+    # Ensure the result is within base_dir
+    if not full_path.startswith(base_dir + os.sep) and full_path != base_dir:
+        raise ValueError(f"Path traversal detected: '{user_path}' resolves outside base directory")
+
+    return full_path
+
 
 def save_progress(session_id, directory, formats, recursive, processed_files,
                  bad_files, repaired_files, progress_dir=DEFAULT_PROGRESS_DIR):
@@ -649,9 +859,6 @@ def save_progress(session_id, directory, formats, recursive, processed_files,
     if not os.path.exists(progress_dir):
         os.makedirs(progress_dir, exist_ok=True)
 
-    # Remove duplicates while preserving order
-    processed_files = list(dict.fromkeys(processed_files))
-    
     # Create a progress state object
     progress_state = {
         'version': VERSION,
@@ -659,34 +866,60 @@ def save_progress(session_id, directory, formats, recursive, processed_files,
         'directory': str(directory),
         'formats': formats,
         'recursive': recursive,
-        'processed_files': processed_files,
-        'bad_files': bad_files,
-        'repaired_files': repaired_files
+        'processed_files': _deduplicate(processed_files),
+        'bad_files': _deduplicate(bad_files),
+        'repaired_files': _deduplicate(repaired_files)
     }
-    
-    # Save to file
-    progress_file = os.path.join(progress_dir, f"session_{session_id}.progress")
-    with open(progress_file, 'wb') as f:
-        pickle.dump(progress_state, f)
-    
+
+    # Save to file using JSON instead of pickle for security
+    # This prevents arbitrary code execution via malicious progress files
+    progress_file = os.path.join(progress_dir, f"session_{session_id}.progress.json")
+    with open(progress_file, 'w') as f:
+        json.dump(progress_state, f, indent=2)
+
     logging.debug(f"Progress saved to {progress_file}")
     return progress_file
 
 def load_progress(session_id, progress_dir=DEFAULT_PROGRESS_DIR):
     """Load progress from a saved session."""
-    progress_file = os.path.join(progress_dir, f"session_{session_id}.progress")
-    
-    if not os.path.exists(progress_file):
+    # Try new JSON format first (more secure)
+    progress_file_json = os.path.join(progress_dir, f"session_{session_id}.progress.json")
+    progress_file_legacy = os.path.join(progress_dir, f"session_{session_id}.progress")
+
+    # Prefer JSON format for security
+    if os.path.exists(progress_file_json):
+        progress_file = progress_file_json
+        use_json = True
+    elif os.path.exists(progress_file_legacy):
+        progress_file = progress_file_legacy
+        use_json = False
+        logging.warning("Loading legacy pickle format. This format is deprecated for security reasons.")
+    else:
         return None
-    
+
     try:
-        with open(progress_file, 'rb') as f:
-            progress_state = pickle.load(f)
-            
+        if use_json:
+            # Secure JSON deserialization
+            with open(progress_file, 'r') as f:
+                progress_state = json.load(f)
+        else:
+            # Legacy pickle support (with warning)
+            # TODO: Remove pickle support in future versions
+            import pickle
+            with open(progress_file, 'rb') as f:
+                progress_state = pickle.load(f)
+            logging.warning("SECURITY WARNING: Loaded progress file using unsafe pickle format. "
+                          "Please delete old .progress files and use new .progress.json format.")
+
+        # Remove any duplicate entries from lists
+        for key in ('processed_files', 'bad_files', 'repaired_files'):
+            if key in progress_state:
+                progress_state[key] = _deduplicate(progress_state[key])
+
         # Check version compatibility
         if progress_state.get('version', '0.0.0') != VERSION:
             logging.warning("Progress file was created with a different version. Some incompatibilities may exist.")
-            
+
         logging.info(f"Loaded progress from {progress_file}")
         return progress_state
     except Exception as e:
@@ -697,29 +930,45 @@ def list_saved_sessions(progress_dir=DEFAULT_PROGRESS_DIR):
     """List all saved sessions with their details."""
     if not os.path.exists(progress_dir):
         return []
-    
+
     sessions = []
     for filename in os.listdir(progress_dir):
-        if filename.endswith('.progress'):
+        # Support both new JSON format and legacy pickle format
+        if filename.endswith('.progress.json') or filename.endswith('.progress'):
             try:
                 filepath = os.path.join(progress_dir, filename)
-                with open(filepath, 'rb') as f:
-                    progress_state = pickle.load(f)
-                
+                use_json = filename.endswith('.progress.json')
+
+                if use_json:
+                    with open(filepath, 'r') as f:
+                        progress_state = json.load(f)
+                else:
+                    # Legacy pickle format
+                    import pickle
+                    with open(filepath, 'rb') as f:
+                        progress_state = pickle.load(f)
+
+                # Extract session ID from filename
+                if filename.endswith('.progress.json'):
+                    session_id = filename.replace('session_', '').replace('.progress.json', '')
+                else:
+                    session_id = filename.replace('session_', '').replace('.progress', '')
+
                 session_info = {
-                    'id': filename.replace('session_', '').replace('.progress', ''),
+                    'id': session_id,
                     'timestamp': progress_state.get('timestamp', 'Unknown'),
                     'directory': progress_state.get('directory', 'Unknown'),
                     'formats': progress_state.get('formats', []),
                     'processed_count': len(progress_state.get('processed_files', [])),
                     'bad_count': len(progress_state.get('bad_files', [])),
                     'repaired_count': len(progress_state.get('repaired_files', [])),
-                    'filepath': filepath
+                    'filepath': filepath,
+                    'format': 'JSON' if use_json else 'Pickle (Legacy)'
                 }
                 sessions.append(session_info)
             except Exception as e:
                 logging.debug(f"Failed to load session from {filename}: {str(e)}")
-    
+
     # Sort by timestamp, newest first
     sessions.sort(key=lambda x: x['timestamp'], reverse=True)
     return sessions
@@ -757,11 +1006,11 @@ def find_image_files(directory, formats, recursive=True):
     logging.info(f"Found {len(image_files)} image files")
     return image_files
 
-def process_images(directory, formats, dry_run=True, repair=False, 
+def process_images(directory, formats, dry_run=True, repair=False,
                   max_workers=None, recursive=True, move_to=None, repair_dir=None,
                   save_progress_interval=5, resume_session=None, progress_dir=DEFAULT_PROGRESS_DIR,
                   thorough_check=False, sensitivity='medium', ignore_eof=False, check_visual=False,
-                  visual_strictness='medium'):
+                  visual_strictness='medium', enable_security_checks=False):
     """Find corrupt image files and optionally repair, delete, or move them."""
     start_time = time.time()
     
@@ -817,7 +1066,7 @@ def process_images(directory, formats, dry_run=True, repair=False,
         logging.info(f"Created directory for backup files: {repair_dir}")
     
     # Prepare input arguments for workers
-    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness) for file_path in image_files]
+    input_args = [(file_path, repair, repair_dir, thorough_check, sensitivity, ignore_eof, check_visual, visual_strictness, enable_security_checks) for file_path in image_files]
     
     # Process files in parallel
     logging.info("Processing files in parallel...")
@@ -922,17 +1171,22 @@ def process_images(directory, formats, dry_run=True, repair=False,
                     # If relpath starts with ".." it means file_path is not within directory
                     # In this case, just use the basename as fallback
                     if rel_path.startswith('..'):
-                        dest_path = os.path.join(move_to, os.path.basename(file_path))
-                    else:
-                        # Create the full destination path preserving subdirectories
-                        dest_path = os.path.join(move_to, rel_path)
-                        
+                        rel_path = os.path.basename(file_path)
+
+                    # Use safe path joining to prevent path traversal attacks
+                    # This ensures files can't be written outside the move_to directory
+                    try:
+                        dest_path = safe_join_path(move_to, rel_path)
+                    except ValueError as ve:
+                        logging.error(f"Security error moving {file_path}: {ve}")
+                        continue
+
                     # Create parent directories if they don't exist
                     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                    
+
                     # Use shutil.move instead of os.rename to handle cross-device file movements
                     shutil.move(file_path, dest_path)
-                    
+
                     # Add arrow with color
                     arrow = f"{colorama.Fore.CYAN}→{colorama.Style.RESET_ALL}"
                     msg = f"Moved: {file_path} {arrow} {dest_path} ({size_str})"
@@ -1070,7 +1324,7 @@ def main():
     
     # Validation options
     validation_group = parser.add_argument_group('Validation options')
-    validation_group.add_argument('--thorough', action='store_true', 
+    validation_group.add_argument('--thorough', action='store_true',
                                  help='Perform thorough image validation (slower but catches more subtle corruption)')
     validation_group.add_argument('--sensitivity', type=str, choices=['low', 'medium', 'high'], default='medium',
                                 help='Set validation sensitivity level: low (basic checks), medium (standard checks), high (most strict)')
@@ -1080,6 +1334,15 @@ def main():
                                 help='Analyze image content to detect visible corruption like gray/black areas')
     validation_group.add_argument('--visual-strictness', type=str, choices=['low', 'medium', 'high'], default='medium',
                                 help='Set strictness level for visual corruption detection: low (most permissive), medium (balanced), high (only clear corruption)')
+
+    # Security options
+    security_group = parser.add_argument_group('Security options')
+    security_group.add_argument('--security-checks', action='store_true',
+                               help='Enable enhanced security validation (file size limits, dimension checks, format verification)')
+    security_group.add_argument('--max-file-size', type=int, default=MAX_FILE_SIZE,
+                               help=f'Maximum file size in bytes to process (default: {MAX_FILE_SIZE} = 100MB)')
+    security_group.add_argument('--max-pixels', type=int, default=MAX_IMAGE_PIXELS,
+                               help=f'Maximum image dimensions in pixels (default: {MAX_IMAGE_PIXELS} = 50MP)')
     
     # Progress saving options
     progress_group = parser.add_argument_group('Progress options')
@@ -1091,7 +1354,7 @@ def main():
                               help='Resume from a previously saved session')
     
     args = parser.parse_args()
-    
+
     # Setup logging
     setup_logging(args.verbose, args.no_color)
     
@@ -1317,11 +1580,18 @@ def main():
             'medium': colorama.Fore.YELLOW,
             'high': colorama.Fore.RED
         }.get(args.visual_strictness, colorama.Fore.YELLOW)
-        
+
         visual_str = f"{colorama.Fore.MAGENTA}VISUAL CHECK{colorama.Style.RESET_ALL}: " + \
                      f"Analyzing image content (strictness: {strictness_color}{args.visual_strictness.upper()}{colorama.Style.RESET_ALL})"
         logging.info(visual_str)
-    
+
+    # Show security checks status
+    if args.security_checks:
+        security_str = f"{colorama.Fore.RED}SECURITY CHECKS ENABLED{colorama.Style.RESET_ALL}: " + \
+                      f"Validating file sizes (max {humanize.naturalsize(MAX_FILE_SIZE)}), " + \
+                      f"dimensions (max {MAX_IMAGE_PIXELS:,} pixels), and format integrity"
+        logging.info(security_str)
+
     # Show which formats we're checking
     format_list = ", ".join(formats)
     logging.info(f"Checking image formats: {format_list}")
@@ -1329,9 +1599,9 @@ def main():
     
     try:
         bad_files, repaired_files, total_size_saved = process_images(
-            directory, 
+            directory,
             formats,
-            dry_run=dry_run, 
+            dry_run=dry_run,
             repair=args.repair,
             max_workers=args.workers,
             recursive=not args.non_recursive,
@@ -1344,7 +1614,8 @@ def main():
             sensitivity=args.sensitivity,
             ignore_eof=args.ignore_eof,
             check_visual=args.check_visual,
-            visual_strictness=args.visual_strictness
+            visual_strictness=args.visual_strictness,
+            enable_security_checks=args.security_checks
         )
         
         # Colorful summary
