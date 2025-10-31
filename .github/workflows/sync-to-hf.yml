@@ -1,0 +1,36 @@
+name: Sync to Hugging Face Spaces
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'app.py'
+      - 'steg_embedder.py'
+      - 'rat_finder.py'
+      - 'find_bad_images.py'
+      - 'requirements.txt'
+      - 'README.md'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git config --global user.email "noreply@deepneuro.ai"
+          git config --global user.name "DeepNeuro AI Bot"
+
+          # Add Hugging Face remote
+          git remote add space https://richardyoung:$HF_TOKEN@huggingface.co/spaces/richardyoung/2pac || true
+
+          # Force push to Hugging Face Space
+          git push space main --force
