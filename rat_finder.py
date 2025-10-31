@@ -14,6 +14,7 @@ import sys
 import argparse
 import concurrent.futures
 import logging
+import tempfile
 import numpy as np
 from pathlib import Path
 from PIL import Image
@@ -517,6 +518,41 @@ def check_metadata_anomalies(image_path):
         logging.debug(f"Error analyzing metadata in {image_path}: {str(e)}")
         return False, 0, {"error": str(e)}
 
+def check_trailing_data(image_path):
+    """Detect suspicious data appended after the official end markers."""
+    try:
+        with open(image_path, 'rb') as f:
+            data = f.read()
+
+        appended_bytes = 0
+        lower = image_path.lower()
+
+        if lower.endswith(('.jpg', '.jpeg', '.jfif')):
+            marker = data.rfind(b'\xFF\xD9')
+            if marker != -1 and marker < len(data) - 2:
+                appended_bytes = len(data) - marker - 2
+        elif lower.endswith('.png'):
+            marker = data.rfind(b'\x00\x00\x00\x00IEND\xAEB\x60\x82')
+            if marker != -1 and marker < len(data) - 12:
+                appended_bytes = len(data) - marker - 12
+        else:
+            return False, 0, {"error": "unsupported format"}
+
+        is_suspicious = appended_bytes > 0
+        confidence = 0
+        if is_suspicious:
+            ratio = appended_bytes / len(data)
+            confidence = min(95, 50 + int(ratio * 500))
+
+        details = {
+            "appended_bytes": appended_bytes
+        }
+
+        return is_suspicious, confidence, details
+    except Exception as e:
+        logging.debug(f"Error analyzing trailing data in {image_path}: {str(e)}")
+        return False, 0, {"error": str(e)}
+
 def check_visual_noise_anomalies(image_path):
     """
     Analyze visual noise patterns to detect potential steganography.
@@ -624,7 +660,14 @@ def analyze_image(image_path, sensitivity='medium'):
             'confidence': metadata_result[1],
             'details': metadata_result[2]
         }
-        
+
+        trailing_result = check_trailing_data(image_path)
+        results['trailing_data_analysis'] = {
+            'suspicious': trailing_result[0],
+            'confidence': trailing_result[1],
+            'details': trailing_result[2]
+        }
+
         noise_result = check_visual_noise_anomalies(image_path)
         results['visual_noise_analysis'] = {
             'suspicious': noise_result[0],
@@ -656,6 +699,7 @@ def analyze_image(image_path, sensitivity='medium'):
             'histogram_analysis': 0.20,      # Histogram patterns are strong indicators
             'file_size_analysis': 0.10,      # Size can be indicative
             'metadata_analysis': 0.10,       # Metadata less common but useful indicator
+            'trailing_data_analysis': 0.10,  # Detects data after EOF markers
             'visual_noise_analysis': 0.15,   # Visual noise can be a good indicator
             'ela_analysis': 0.20            # Error Level Analysis is effective for JPEG manipulation
         }
@@ -873,10 +917,20 @@ def create_visual_report(image_path, confidence, details, output_dir):
                     else:
                         assessment = "NORMAL: Size within expected range"
                     
-                    axs[2, 0].annotate(assessment, xy=(0.05, 0.05), xycoords='axes fraction', 
+                    axs[2, 0].annotate(assessment, xy=(0.05, 0.05), xycoords='axes fraction',
                                      fontsize=9, verticalalignment='bottom')
+
+                    if 'trailing_data_analysis' in details:
+                        tdata = details['trailing_data_analysis']['details']
+                        if tdata.get('appended_bytes', 0) > 0:
+                            axs[2, 0].annotate(
+                                f"Appended data: {tdata['appended_bytes']} bytes",
+                                xy=(0.05, 0.85), xycoords='axes fraction',
+                                fontsize=9, verticalalignment='bottom',
+                                color='red'
+                            )
                 else:
-                    axs[2, 0].text(0.5, 0.5, "Size analysis data not available", 
+                    axs[2, 0].text(0.5, 0.5, "Size analysis data not available",
                                  horizontalalignment='center', verticalalignment='center')
                     axs[2, 0].axis('off')
             else:
