@@ -8,9 +8,6 @@ import os
 import tempfile
 import gradio as gr
 from PIL import Image
-import matplotlib.pyplot as plt
-import io
-import base64
 
 # Import 2PAC modules
 from steg_embedder import StegEmbedder
@@ -20,6 +17,24 @@ import find_bad_images
 
 # Initialize embedder
 embedder = StegEmbedder()
+SENSITIVITY_MAP = {
+    1: 'low', 2: 'low', 3: 'low',
+    4: 'medium', 5: 'medium', 6: 'medium',
+    7: 'high', 8: 'high', 9: 'high', 10: 'high'
+}
+
+
+def _save_numpy_image_to_temp_path(image, suffix=".png"):
+    """Save a numpy image to a temporary file and return its path."""
+    with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+        Image.fromarray(image).save(tmp.name, 'PNG')
+        return tmp.name
+
+
+def _safe_unlink(path):
+    """Delete a file path if it exists."""
+    if path and os.path.exists(path):
+        os.unlink(path)
 
 
 def hide_data_in_image(image, secret_text, password, bits_per_channel):
@@ -33,11 +48,7 @@ def hide_data_in_image(image, secret_text, password, bits_per_channel):
         return None, "⚠️ Please enter text to hide"
 
     try:
-        # Save uploaded image to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_input:
-            img = Image.fromarray(image)
-            img.save(tmp_input.name, 'PNG')
-            input_path = tmp_input.name
+        input_path = _save_numpy_image_to_temp_path(image)
 
         # Create output file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_output:
@@ -50,7 +61,7 @@ def hide_data_in_image(image, secret_text, password, bits_per_channel):
         # Check if data fits
         data_size = len(secret_text.encode('utf-8'))
         if data_size > capacity:
-            os.unlink(input_path)
+            _safe_unlink(input_path)
             return None, f"❌ **Error:** Data too large!\n\n" \
                         f"- **Data size:** {data_size:,} bytes\n" \
                         f"- **Maximum capacity:** {capacity:,} bytes\n" \
@@ -67,12 +78,8 @@ def hide_data_in_image(image, secret_text, password, bits_per_channel):
             bits_per_channel=bits_per_channel
         )
 
-        # Clean up input
-        os.unlink(input_path)
-
         if not success:
-            if os.path.exists(output_path):
-                os.unlink(output_path)
+            _safe_unlink(output_path)
             return None, f"❌ **Error:** {message}"
 
         # Load result image
@@ -100,11 +107,10 @@ def hide_data_in_image(image, secret_text, password, bits_per_channel):
         return result_img, result_message
 
     except Exception as e:
-        if 'input_path' in locals() and os.path.exists(input_path):
-            os.unlink(input_path)
-        if 'output_path' in locals() and os.path.exists(output_path):
-            os.unlink(output_path)
         return None, f"❌ **Error:** {str(e)}"
+    finally:
+        _safe_unlink(locals().get('input_path'))
+        _safe_unlink(locals().get('output_path'))
 
 
 def detect_hidden_data(image, sensitivity):
@@ -115,25 +121,16 @@ def detect_hidden_data(image, sensitivity):
         return None, "⚠️ Please upload an image to analyze"
 
     try:
-        # Save uploaded image to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-            img = Image.fromarray(image)
-            img.save(tmp.name, 'PNG')
-            image_path = tmp.name
+        image_path = _save_numpy_image_to_temp_path(image)
 
         # Map slider to sensitivity
-        sens_map = {1: 'low', 2: 'low', 3: 'low', 4: 'medium', 5: 'medium',
-                   6: 'medium', 7: 'high', 8: 'high', 9: 'high', 10: 'high'}
-        sensitivity_str = sens_map.get(sensitivity, 'medium')
+        sensitivity_str = SENSITIVITY_MAP.get(sensitivity, 'medium')
 
         # Perform analysis
         confidence, details = rat_finder.analyze_image(image_path, sensitivity=sensitivity_str)
 
         # Generate ELA visualization
         ela_result = rat_finder.perform_ela_analysis(image_path)
-
-        # Clean up
-        os.unlink(image_path)
 
         # Create confidence indicator
         if confidence >= 70:
@@ -184,9 +181,9 @@ Use the "Extract Data" tab if you suspect LSB steganography!
         return None, result_text
 
     except Exception as e:
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
         return None, f"❌ **Error:** {str(e)}"
+    finally:
+        _safe_unlink(locals().get('image_path'))
 
 
 def extract_hidden_data(image, password, bits_per_channel):
@@ -197,11 +194,7 @@ def extract_hidden_data(image, password, bits_per_channel):
         return "⚠️ Please upload an image"
 
     try:
-        # Save uploaded image to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-            img = Image.fromarray(image)
-            img.save(tmp.name, 'PNG')
-            image_path = tmp.name
+        image_path = _save_numpy_image_to_temp_path(image)
 
         # Attempt extraction
         pwd = password if password and len(password) > 0 else None
@@ -210,9 +203,6 @@ def extract_hidden_data(image, password, bits_per_channel):
             password=pwd,
             bits_per_channel=bits_per_channel
         )
-
-        # Clean up
-        os.unlink(image_path)
 
         if not success:
             return f"❌ **{message}**\n\nPossible reasons:\n" \
@@ -240,9 +230,9 @@ def extract_hidden_data(image, password, bits_per_channel):
         return result
 
     except Exception as e:
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
         return f"❌ **Error:** {str(e)}"
+    finally:
+        _safe_unlink(locals().get('image_path'))
 
 
 def check_image_corruption(image, sensitivity, check_visual):
@@ -253,16 +243,10 @@ def check_image_corruption(image, sensitivity, check_visual):
         return "⚠️ Please upload an image to check"
 
     try:
-        # Save uploaded image to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-            img = Image.fromarray(image)
-            img.save(tmp.name, 'PNG')
-            image_path = tmp.name
+        image_path = _save_numpy_image_to_temp_path(image)
 
         # Map slider to sensitivity
-        sens_map = {1: 'low', 2: 'low', 3: 'low', 4: 'medium', 5: 'medium',
-                   6: 'medium', 7: 'high', 8: 'high', 9: 'high', 10: 'high'}
-        sensitivity_str = sens_map.get(sensitivity, 'medium')
+        sensitivity_str = SENSITIVITY_MAP.get(sensitivity, 'medium')
 
         # Validate image
         is_valid = find_bad_images.is_valid_image(
@@ -274,9 +258,6 @@ def check_image_corruption(image, sensitivity, check_visual):
 
         # Get diagnostic details
         issues = find_bad_images.diagnose_image_issue(image_path)
-
-        # Clean up
-        os.unlink(image_path)
 
         # Format results
         if is_valid:
@@ -320,9 +301,9 @@ The image has validation problems:
         return result
 
     except Exception as e:
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
         return f"❌ **Error:** {str(e)}"
+    finally:
+        _safe_unlink(locals().get('image_path'))
 
 
 # Create Gradio interface
