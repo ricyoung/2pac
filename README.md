@@ -61,6 +61,19 @@ python 2pac.py extract --image out.png --password hunter2
 - 1–4 bits per channel: 1 is undetectable, 4 gives more capacity but is visible in smooth areas
 - A 1000×1000 image with 1 bit/channel hides ~375 KB
 
+What does 375 KB of text look like?
+
+| Reference | Approximate size |
+|---|---|
+| A single text message | ~100 bytes |
+| A typical email | ~2–5 KB |
+| The US Constitution | ~46 KB |
+| A 20-page research paper | ~150 KB |
+| A full novel (~60,000 words) | ~360 KB |
+| **1 megapixel image at 1 bit/channel** | **~375 KB** |
+
+So a single 1000×1000 photo can hide roughly a full novel's worth of text. A 4K phone photo (4000×3000) can hide ~4.5 MB — about twelve novels.
+
 ### RAT Finder — Find Problems
 
 RAT Finder detects two kinds of image problems:
@@ -163,6 +176,36 @@ Or use the web UI: [richardyoung-2pac.hf.space](https://richardyoung-2pac.hf.spa
 │   └── test_dct_steg.py       # 9 DCT tests
 └── requirements.txt
 ```
+
+---
+
+## Future Directions
+
+### Advanced Steganography Methods
+
+2PAC currently implements LSB and DCT embedding. Several more sophisticated approaches exist that could be added:
+
+| Method | How it works | Advantage |
+|---|---|---|
+| **Adaptive steganography** | Embeds more data in noisy/complex regions (edges, textures) and less in smooth areas (sky, walls). Uses visual saliency models to decide where to hide bits. | Much harder to detect — changes are concentrated where the human eye and statistical tests expect variation. |
+| **Matrix embedding (F5-style)** | Uses Hamming codes to minimize the number of pixel changes needed for a given payload. Instead of flipping one bit per data bit, it finds the optimal set of changes. | Fewer modifications means less statistical evidence for detectors. Can embed the same data with ~30% fewer changes. |
+| **Spread spectrum** | Spreads the hidden signal across the entire image using a pseudo-random noise sequence keyed to a password. The signal is below the noise floor of the image. | Extremely resistant to detection and partially survives lossy compression, cropping, and resizing. Used in digital watermarking. |
+| **Palette-based (GIF/PNG-8)** | For indexed-color images, reorders the color palette or modifies palette entries. The pixel indices don't change — only the color table does. | Works on formats that LSB can't touch. Invisible because the displayed image is identical. |
+| **Wavelet-domain embedding** | Operates on wavelet coefficients instead of DCT blocks. Wavelet transforms capture both frequency and spatial information simultaneously. | Better capacity than DCT with similar detectability. Used in JPEG 2000 and some watermarking standards. |
+| **Deep learning steganography** | Neural networks trained as encoder/decoder pairs. The encoder learns to produce stego images that are visually and statistically indistinguishable from clean images. | Potentially resistant to all known statistical detectors because the network learns to evade them during training. Still an active research area. |
+| **Generative steganography** | Instead of modifying an existing image, generates an entirely new image that contains the hidden data. The image never existed before — there's no "original" to compare against. | Eliminates the embedding-detection arms race entirely. Forensic tools that look for modifications find nothing because the image was born with the data inside it. |
+
+### Detection Improvements
+
+- **Deep learning detectors** — Train CNNs on pairs of clean/stego images to catch embedding that evades statistical tests
+- **Calibration-based analysis** — Compare the image against a recalibrated version to detect subtle manipulation
+- **Compression-resilient detection** — Methods that still detect steganography even after the image has been re-compressed or resized
+
+### Image Validation Improvements
+
+- **HEIC/AVIF support** — Add repair capability for modern formats
+- **AI-based visual corruption** — Detect subtle artifacts (banding, color shifts, compression damage) that pixel-threshold checks miss
+- **Archive health monitoring** — Periodic scanning with diff reports to catch bit rot early
 
 ---
 

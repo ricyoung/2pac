@@ -424,7 +424,19 @@ Binary:           10011100 01011001 11001001
 Modified pixel:   R=156   G=88    B=201     (89→88, undetectable to the eye)
 ```
 
-A 1000×1000 image can hide roughly **375 KB** of text this way. Add a password and the data is XOR-encrypted before embedding.
+A 1000×1000 image can hide roughly **375 KB** of text this way. What does that mean?
+
+| Reference | Size |
+|---|---|
+| A text message | ~100 bytes |
+| A typical email | ~2–5 KB |
+| The US Constitution | ~46 KB |
+| A 20-page research paper | ~150 KB |
+| A full novel (~60,000 words) | ~360 KB |
+
+So a single 1000×1000 photo can hide roughly **a full novel**. A 4K phone photo (4000×3000) can hide ~4.5 MB — about twelve novels.
+
+Add a password and the data is XOR-encrypted before embedding.
 
 2PAC also offers **DCT mode** (experimental) which hides data in the frequency domain instead of pixel values — harder to detect but with much lower capacity.
 """
