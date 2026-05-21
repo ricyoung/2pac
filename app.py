@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-2PAC: Picture Analyzer & Corruption Killer - Hugging Face Space UI.
+2PAC + RAT Finder - Hugging Face Space UI.
 
-Two user-facing tools:
-  - Stego Tool: hide, extract, and detect hidden data
-  - 2PAC Scan: validate and diagnose image corruption
+Two tools:
+  - 2PAC: hide and extract secret data in images
+  - RAT Finder: detect steganography, find corrupt images
 """
 
 import os
@@ -67,8 +67,6 @@ def _file_path(file_obj):
     return getattr(file_obj, 'name', None) or getattr(file_obj, 'path', None)
 
 
-# Generated samples avoid committing binary assets, which Hugging Face rejects
-# unless the repo is configured for Xet/LFS storage.
 def sample_clean_image():
     width, height = 320, 220
     x = np.linspace(30, 230, width, dtype=np.uint8)
@@ -246,7 +244,7 @@ def detect_stego(image, sensitivity):
                 lines.append(f"- **{key}:** {result}")
         lines.extend([
             "",
-            "**Interpretation:** RAT Finder answers: *Does this image look like it contain hidden data?*",
+            "**Interpretation:** RAT Finder answers: *Does this image contain hidden data?*",
             "A high score means forensic anomalies exist; it is not proof of a secret message."
         ])
 
@@ -317,15 +315,9 @@ def batch_validate(files, sensitivity, check_visual):
     return rows, summary
 
 
-HEADER = """
-# 2PAC: Picture Analyzer & Corruption Killer
-
-Hide messages inside images. Detect hidden data. Find and repair corrupt files.
-"""
-
-
-def _build_stego_cmd(subcommand, image_path, data, output, password, dct, bits, sensitivity, non_recursive, workers, visual_reports, reports_dir):
-    parts = ["python 2pac_stego.py", subcommand]
+def _build_stego_cmd(subcommand, image_path, data, output, password, dct_flag, bits,
+                     sensitivity, non_recursive, workers, visual_reports, reports_dir):
+    parts = ["python 2pac.py", subcommand]
     if subcommand == "hide":
         if image_path:
             parts.append(f"--image {image_path}")
@@ -335,22 +327,29 @@ def _build_stego_cmd(subcommand, image_path, data, output, password, dct, bits, 
             parts.append(f"--output {output}")
         if password:
             parts.append(f"--password ****")
-        if dct:
+        if dct_flag:
             parts.append("--dct")
-        if bits and not dct:
+        if bits and not dct_flag:
             parts.append(f"--bits {bits}")
     elif subcommand == "extract":
         if image_path:
             parts.append(f"--image {image_path}")
         if password:
             parts.append(f"--password ****")
-        if dct:
+        if dct_flag:
             parts.append("--dct")
-        if bits and not dct:
+        if bits and not dct_flag:
             parts.append(f"--bits {bits}")
-    elif subcommand == "detect":
-        if image_path:
-            parts.append(image_path)
+    return " \\\n  ".join(parts) if len(parts) > 3 else " ".join(parts)
+
+
+def _build_ratfinder_cmd(subcommand, path, sensitivity, non_recursive, workers,
+                         visual_reports, reports_dir, thorough, check_visual, repair,
+                         backup_dir, move_to, delete, formats):
+    parts = ["python ratfinder.py", subcommand]
+    if subcommand == "detect":
+        if path:
+            parts.append(path)
         if sensitivity != "medium":
             parts.append(f"--sensitivity {sensitivity}")
         if non_recursive:
@@ -361,66 +360,58 @@ def _build_stego_cmd(subcommand, image_path, data, output, password, dct, bits, 
             parts.append("--visual-reports")
         if reports_dir:
             parts.append(f"--reports-dir {reports_dir}")
+    elif subcommand == "scan":
+        if path:
+            parts.append(path)
+        if thorough:
+            parts.append("--thorough")
+        if check_visual:
+            parts.append("--check-visual")
+        if sensitivity != "medium":
+            parts.append(f"--sensitivity {sensitivity}")
+        if repair:
+            parts.append("--repair")
+        if backup_dir:
+            parts.append(f"--backup-dir {backup_dir}")
+        if move_to:
+            parts.append(f"--move-to {move_to}")
+        elif delete:
+            parts.append("--delete")
+        if formats:
+            parts.append(f"--formats {' '.join(formats)}")
+    elif subcommand == "check":
+        if path:
+            parts.append(path)
+        if check_visual:
+            parts.append("--check-visual")
+        if sensitivity != "medium":
+            parts.append(f"--sensitivity {sensitivity}")
     return " \\\n  ".join(parts) if len(parts) > 3 else " ".join(parts)
 
 
-def _build_scan_cmd(directory, action, move_to, check_file, thorough, check_visual, sensitivity,
-                    repair, backup_dir, formats, workers, delete, resume):
-    if check_file:
-        parts = ["python 2pac_scan.py", f"--check-file {check_file}"]
-    else:
-        parts = ["python 2pac_scan.py", directory or "./images"]
-    if action == "move" and move_to:
-        parts.append(f"--move-to {move_to}")
-    elif action == "delete":
-        parts.append("--delete")
-    if thorough:
-        parts.append("--thorough")
-    if check_visual:
-        parts.append("--check-visual")
-    if sensitivity != "medium":
-        parts.append(f"--sensitivity {sensitivity}")
-    if repair:
-        parts.append("--repair")
-    if backup_dir:
-        parts.append(f"--backup-dir {backup_dir}")
-    if formats:
-        parts.append(f"--formats {' '.join(formats)}")
-    if workers and workers != 1:
-        parts.append(f"--workers {workers}")
-    if resume:
-        parts.append(f"--resume {resume}")
-    return " \\\n  ".join(parts) if len(parts) > 3 else " ".join(parts)
+HEADER = """
+# 2PAC + RAT Finder
 
-
-INTRO_SECTION = """
-### Images can hide secrets — and they can also break.
-
-Every digital image is just a grid of numbers. 2PAC gives you two independent tools to work with those numbers:
-
-**Stego Tool** — Hide text inside an image so no one else can see it, extract hidden text, or run forensic analysis to detect whether an image has been tampered with.
-
-**2PAC Scan** — Check whether image files are structurally intact, detect corrupted or truncated files, and attempt repairs.
-
-These are different problems. A perfectly valid image can contain a hidden message, and a corrupt image might not contain anything at all. Pick the tool that matches your question.
+**2PAC** hides secret data inside images. **RAT Finder** catches problems — steganography, corruption, and bad files.
 """
 
 
-TOOL_COMPARISON = """
-### Which tool do I need?
+MEMORIAL = """
+*In memory of Jeff Young. All Eyez On Your Images.*
+"""
 
-| | **Stego Tool** | **2PAC Scan** |
-|---|---|---|
-| **Your question** | *"Is there a hidden message in this image?"* | *"Is this image file broken?"* |
-| **What it finds** | LSB patterns, frequency anomalies, histogram irregularities, stego tool signatures in metadata | Truncated files, bad headers, decoder errors, gray/black corrupted regions |
-| **What it can do** | Hide text, extract it, or just detect signs of steganography | Validate integrity, diagnose problems, attempt repair |
-| **Formats** | PNG only (JPEG destroys hidden data) | JPEG, PNG, GIF, TIFF, BMP, WebP, HEIC, ICO |
-| **Best for** | Security research, CTF challenges, privacy | Photo archives, downloaded collections, data recovery |
+
+INTRO_SECTION = """
+### Two tools, two jobs.
+
+**2PAC** — You want to put data in. Hide a message inside an image so nobody else can see it. Or extract hidden data from one.
+
+**RAT Finder** — You want to find out if an image has problems. Catch steganography (hidden data). Find corrupt JPEGs, broken PNGs, truncated files. Use a RAT to catch a RAT.
 """
 
 
 HOW_STEGO_WORKS = """
-### How does image steganography work?
+### How does steganography work?
 
 Every pixel in a digital image is stored as numbers — three channels (red, green, blue), each 0–255. That's 8 binary bits per channel.
 
@@ -440,26 +431,26 @@ A 1000×1000 image can hide roughly **375 KB** of text this way. Add a password 
 
 
 HOW_DETECTION_WORKS = """
-### How does steganography detection work?
+### How does RAT Finder detect steganography?
 
-RAT Finder runs **seven forensic techniques** and combines them into a confidence score:
+Seven forensic techniques combined into a weighted confidence score:
 
-- **LSB Chi-Squared** — Natural images have structured least-significant bits. Steganography makes them uniformly random. A statistical test catches this.
-- **Histogram Analysis** — Systematic LSB modification creates a distinctive "comb pattern" in color histograms where even and odd values become suspiciously similar.
-- **Error Level Analysis** — Re-saves the image and measures pixel differences. Edited or modified regions show different error levels.
-- **Visual Noise** — Compares noise levels across color channels. Steganography that embeds more data in one channel creates a detectable imbalance.
-- **Metadata Inspection** — Scans EXIF data for known steganography tool signatures (OutGuess, StegHide, JSteg, F5, etc.).
-- **File Size Anomalies** — Compares file size against expected ranges for the image dimensions. Embedded payloads bloat files.
+- **LSB Chi-Squared** — Natural images have structured LSBs. Steganography makes them uniformly random. A statistical test catches this.
+- **Histogram Analysis** — Systematic LSB modification creates a distinctive "comb pattern" in color histograms.
+- **Error Level Analysis** — Re-saves the image and measures pixel differences. Edited regions show different error levels.
+- **Visual Noise** — Compares noise levels across color channels. Steganography creates a detectable imbalance.
+- **Metadata Inspection** — Scans EXIF data for known steganography tool signatures (OutGuess, StegHide, JSteg, F5).
+- **File Size Anomalies** — Compares file size against expected ranges. Embedded payloads bloat files.
 - **Trailing Data** — Checks for data appended after the file's official end-of-file marker.
 
-A confidence score ≥ 70% means HIGH SUSPICION. The tool answers *"does this image show forensic signs of hidden data?"* — it does not prove a message exists.
+A confidence score >= 70% means HIGH SUSPICION.
 """
 
 
-HOW_SCAN_WORKS = """
+HOW_VALIDATION_WORKS = """
 ### How does image validation work?
 
-2PAC Scan runs images through a multi-step pipeline:
+RAT Finder runs images through a multi-step pipeline:
 
 1. **Header check** — Quick structural validation
 2. **Full pixel decode** — Reads every pixel to catch truncation
@@ -468,70 +459,39 @@ HOW_SCAN_WORKS = """
 5. **Re-encode test** — Catches subtle decoder errors
 6. **External tools** — Runs `exiftool` and ImageMagick if available
 
-Steps 4–6 only run in thorough mode. For large collections, the basic pipeline is fast and usually sufficient.
-
-When repair is enabled, 2PAC re-saves the image in the correct format (JPEG, PNG, GIF). It works when pixel data is intact but internal structure is broken.
+Supports JPEG, PNG, GIF, TIFF, BMP, WebP, HEIC, and ICO. Repair is available for JPEG, PNG, and GIF.
 """
 
 
-QUICK_START_GUIDE = """
-### Quick start
-
-1. Go to **Stego Tool → Hide** and upload an image, type a message, and click Embed
-2. Go to **Stego Tool → Extract** and upload the output image to recover your text
-3. Go to **Stego Tool → Detect** and upload any image to run RAT Finder's forensic analysis
-4. Go to **2PAC Scan** and upload images to check for corruption
-
-Or use the CLI for automation, large folders, and repair workflows:
-"""
-
-
-CLI_REFERENCE = """
-```bash
-# Stego Tool
-python 2pac_stego.py hide --image photo.png --data "secret" --output out.png
-python 2pac_stego.py extract --image out.png
-python 2pac_stego.py detect suspicious.png --sensitivity high
-
-# 2PAC Scan
-python 2pac_scan.py ./images --thorough
-python 2pac_scan.py --check-file broken.jpg --check-visual
-python 2pac_scan.py ./images --move-to ./bad --repair
-```
-"""
-
-
-with gr.Blocks(title="2PAC") as demo:
+with gr.Blocks(title="2PAC + RAT Finder") as demo:
     gr.Markdown(HEADER)
+    gr.Markdown(MEMORIAL)
 
     with gr.Tabs():
         with gr.Tab("Start Here"):
             gr.Markdown(INTRO_SECTION)
-            gr.Markdown(TOOL_COMPARISON)
             with gr.Row():
                 with gr.Column():
                     gr.Markdown(
-                        "### Stego Tool\n"
-                        "Use this when your question is: **Is there hidden data?**\n\n"
+                        "### 2PAC\n"
+                        "You want to **put data in**.\n\n"
                         "- Hide messages with LSB or experimental DCT\n"
-                        "- Extract messages created by 2PAC\n"
-                        "- Run RAT Finder forensic detection"
+                        "- Extract hidden messages\n"
+                        "- Password-protect your secrets"
                     )
                 with gr.Column():
                     gr.Markdown(
-                        "### 2PAC Scan\n"
-                        "Use this when your question is: **Is this image damaged?**\n\n"
-                        "- Validate JPEG/PNG/GIF/TIFF/BMP/WebP\n"
-                        "- Detect truncation, bad headers, and visual damage\n"
-                        "- Use CLI repair mode for recoverable files"
+                        "### RAT Finder\n"
+                        "You want to **find problems**.\n\n"
+                        "- Detect steganography (hidden data) in any image\n"
+                        "- Check if a JPEG, PNG, or TIFF is corrupt\n"
+                        "- Batch-validate entire image collections"
                     )
             gr.Markdown(HOW_STEGO_WORKS)
             gr.Markdown(HOW_DETECTION_WORKS)
-            gr.Markdown(HOW_SCAN_WORKS)
-            gr.Markdown(QUICK_START_GUIDE)
-            gr.Markdown(CLI_REFERENCE)
+            gr.Markdown(HOW_VALIDATION_WORKS)
 
-        with gr.Tab("Stego Tool"):
+        with gr.Tab("2PAC"):
             with gr.Tabs():
                 with gr.Tab("Hide"):
                     method = gr.Radio(['LSB - stable, high capacity', 'DCT - experimental, lower capacity'],
@@ -573,7 +533,9 @@ with gr.Blocks(title="2PAC") as demo:
                             ext_out = gr.Markdown()
                     ext_btn.click(fn=extract_data, inputs=[ext_in, ext_pass, ext_bits, ext_method], outputs=[ext_out])
 
-                with gr.Tab("Detect Hidden Data"):
+        with gr.Tab("RAT Finder"):
+            with gr.Tabs():
+                with gr.Tab("Detect Steganography"):
                     with gr.Row():
                         with gr.Column(scale=1):
                             det_in = gr.Image(label="Image to analyze", type="numpy", height=300, format="png")
@@ -587,9 +549,7 @@ with gr.Blocks(title="2PAC") as demo:
                             det_out = gr.Markdown()
                     det_btn.click(fn=detect_stego, inputs=[det_in, det_sens], outputs=[det_img, det_out])
 
-        with gr.Tab("2PAC Scan"):
-            with gr.Tabs():
-                with gr.Tab("Single Image Check"):
+                with gr.Tab("Check Image"):
                     with gr.Row():
                         with gr.Column(scale=1):
                             val_in = gr.Image(label="Image to validate", type="numpy", height=300, format="png")
@@ -604,7 +564,7 @@ with gr.Blocks(title="2PAC") as demo:
                     val_btn.click(fn=validate_image, inputs=[val_in, val_sens, val_vis], outputs=[val_out])
 
                 with gr.Tab("Batch Check"):
-                    gr.Markdown("Upload multiple files to check archive health. The CLI has full move/delete/repair modes.")
+                    gr.Markdown("Upload multiple files to check archive health.")
                     batch_files = gr.File(label="Upload images", file_count="multiple", type="filepath")
                     with gr.Row():
                         batch_sens = gr.Slider(1, 10, value=5, step=1, label="Validation sensitivity")
@@ -616,82 +576,62 @@ with gr.Blocks(title="2PAC") as demo:
                                     inputs=[batch_files, batch_sens, batch_vis],
                                     outputs=[batch_table, batch_summary])
 
-                with gr.Tab("Repair Guidance"):
-                    gr.Markdown(
-                        "The web Space validates and diagnoses. For actual repair/move/delete workflows, use the CLI:\n\n"
-                        "```bash\n"
-                        "python 2pac_scan.py ./images --repair --backup-dir ./backups\n"
-                        "python 2pac_scan.py ./images --move-to ./bad --check-visual\n"
-                        "python 2pac_scan.py ./images --delete --security-checks\n"
-                        "```"
-                    )
-
         with gr.Tab("CLI Builder"):
             gr.Markdown(
                 "## Command-Line Builder\n\n"
                 "Build the command you need, then copy and paste it into your terminal. "
                 "[Install 2PAC](https://github.com/ricyoung/2pac) locally to use the CLI."
             )
-
             with gr.Tabs():
-                with gr.Tab("Stego Tool"):
-                    stego_sub = gr.Radio(["hide", "extract", "detect"], value="hide", label="Subcommand")
+                with gr.Tab("2PAC"):
+                    stego_sub = gr.Radio(["hide", "extract"], value="hide", label="Subcommand")
                     with gr.Row():
                         with gr.Column():
                             stego_image = gr.Textbox(label="Image path", placeholder="photo.png")
-                            stego_data = gr.Textbox(label="Text to hide", placeholder="secret message", visible=True)
+                            stego_data = gr.Textbox(label="Text to hide", placeholder="secret message")
                             stego_output = gr.Textbox(label="Output path", placeholder="out.png")
                             stego_password = gr.Textbox(label="Password", type="password", placeholder="optional")
                         with gr.Column():
                             stego_dct = gr.Checkbox(label="Use DCT mode")
                             stego_bits = gr.Dropdown([1, 2, 3, 4], value=1, label="Bits/channel (LSB only)")
-                            stego_sens = gr.Dropdown(["low", "medium", "high"], value="medium", label="Sensitivity (detect only)")
-                            stego_workers = gr.Slider(1, 16, value=1, step=1, label="Workers (detect only)")
-                            stego_reports = gr.Checkbox(label="Visual reports (detect only)")
                     stego_cmd_out = gr.Code(label="Generated command", language="shell", interactive=False)
-                    stego_sub.change(fn=_build_stego_cmd,
-                                     inputs=[stego_sub, stego_image, stego_data, stego_output,
-                                             stego_password, stego_dct, stego_bits,
-                                             stego_sens, gr.State(False), stego_workers,
-                                             stego_reports, gr.State("")],
-                                     outputs=[stego_cmd_out])
-                    for component in [stego_image, stego_data, stego_output, stego_password,
-                                      stego_dct, stego_bits, stego_sens, stego_workers, stego_reports]:
+                    for component in [stego_sub, stego_image, stego_data, stego_output,
+                                      stego_password, stego_dct, stego_bits]:
                         component.change(fn=_build_stego_cmd,
                                          inputs=[stego_sub, stego_image, stego_data, stego_output,
                                                  stego_password, stego_dct, stego_bits,
-                                                 stego_sens, gr.State(False), stego_workers,
-                                                 stego_reports, gr.State("")],
+                                                 gr.State("medium"), gr.State(False), gr.State(1),
+                                                 gr.State(False), gr.State("")],
                                          outputs=[stego_cmd_out])
 
-                with gr.Tab("2PAC Scan"):
+                with gr.Tab("RAT Finder"):
+                    rat_sub = gr.Radio(["detect", "scan", "check"], value="detect", label="Subcommand")
                     with gr.Row():
                         with gr.Column():
-                            scan_dir = gr.Textbox(label="Directory to scan", placeholder="./images", value="./images")
-                            scan_check_file = gr.Textbox(label="Or check single file", placeholder="leave blank for directory scan")
-                            scan_action = gr.Radio(["dry run (report only)", "move", "delete"], value="dry run (report only)", label="Action")
-                            scan_move_to = gr.Textbox(label="Move-to directory", placeholder="./quarantine", visible=False)
+                            rat_path = gr.Textbox(label="File or directory", placeholder="suspicious.png or ./images")
+                            rat_sens = gr.Dropdown(["low", "medium", "high"], value="medium", label="Sensitivity")
+                            rat_workers = gr.Slider(1, 16, value=1, step=1, label="Workers")
                         with gr.Column():
-                            scan_thorough = gr.Checkbox(label="Thorough mode", value=True)
-                            scan_visual = gr.Checkbox(label="Visual corruption check")
-                            scan_sens = gr.Dropdown(["low", "medium", "high"], value="medium", label="Sensitivity")
-                            scan_repair = gr.Checkbox(label="Attempt repair")
-                            scan_backup = gr.Textbox(label="Backup directory", placeholder="./backups")
-                    with gr.Row():
-                        scan_fmts = gr.CheckboxGroup(["JPEG", "PNG", "GIF", "TIFF", "BMP", "WEBP"], label="Formats")
-                        scan_workers = gr.Slider(1, 16, value=1, step=1, label="Workers")
-                    scan_cmd_out = gr.Code(label="Generated command", language="shell", interactive=False)
-                    for component in [scan_dir, scan_check_file, scan_action, scan_move_to,
-                                      scan_thorough, scan_visual, scan_sens, scan_repair,
-                                      scan_backup, scan_fmts, scan_workers]:
-                        component.change(fn=_build_scan_cmd,
-                                         inputs=[scan_dir, scan_action, scan_move_to, scan_check_file,
-                                                 scan_thorough, scan_visual, scan_sens,
-                                                 scan_repair, scan_backup, scan_fmts, scan_workers,
-                                                 gr.State(False), gr.State("")],
-                                         outputs=[scan_cmd_out])
+                            rat_thorough = gr.Checkbox(label="Thorough mode (scan/check)")
+                            rat_visual = gr.Checkbox(label="Visual corruption check (scan/check)")
+                            rat_repair = gr.Checkbox(label="Attempt repair (scan)")
+                            rat_move = gr.Textbox(label="Move-to dir (scan)", placeholder="./quarantine")
+                    rat_cmd_out = gr.Code(label="Generated command", language="shell", interactive=False)
+                    for component in [rat_sub, rat_path, rat_sens, rat_workers,
+                                      rat_thorough, rat_visual, rat_repair, rat_move]:
+                        component.change(fn=_build_ratfinder_cmd,
+                                         inputs=[rat_sub, rat_path, rat_sens, gr.State(False), rat_workers,
+                                                 gr.State(False), gr.State(""),
+                                                 rat_thorough, rat_visual, rat_repair,
+                                                 gr.State(""), rat_move, gr.State(False), gr.State([])],
+                                         outputs=[rat_cmd_out])
 
-    gr.Markdown("---\n[GitHub](https://github.com/ricyoung/2pac) | [DeepNeuro.AI](https://deepneuro.ai) | All Eyez On Your Images")
+    gr.Markdown(
+        "---\n"
+        "[GitHub](https://github.com/ricyoung/2pac) | "
+        "[DeepNeuro.AI](https://deepneuro.ai) | "
+        "In memory of Jeff Young"
+    )
 
 
 if __name__ == "__main__":
