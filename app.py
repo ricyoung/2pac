@@ -224,8 +224,8 @@ def detect_stego(image, sensitivity):
     try:
         image_path = _save_numpy_image(image)
         sens = slider_to_sensitivity(sensitivity)
-        confidence, details = rat_finder.analyze_image(image_path, sensitivity=sens)
-        ela = rat_finder.perform_ela_analysis(image_path)
+        is_suspicious, confidence, details = rat_finder.analyze_image(image_path, sensitivity=sens)
+        ela_suspicious, ela_conf, ela_details = rat_finder.perform_ela_analysis(image_path)
 
         if confidence >= 70:
             badge = _badge('HIGH SUSPICION', 'red')
@@ -235,14 +235,24 @@ def detect_stego(image, sensitivity):
             badge = _badge('LOW SUSPICION', 'green')
 
         lines = [f"{badge}\n", f"**Confidence:** {confidence:.1f}%", "", "**Signals:**"]
-        lines.extend(f"- {detail}" for detail in details)
+        for key, result in details.items():
+            if isinstance(result, dict):
+                susp = result.get('suspicious', False)
+                conf = result.get('confidence', 0)
+                det = result.get('details', '')
+                status = "suspicious" if susp else "clean"
+                lines.append(f"- **{key}:** {conf:.0f}% — {status} — {det}")
+            else:
+                lines.append(f"- **{key}:** {result}")
         lines.extend([
             "",
-            "**Interpretation:** RAT Finder answers: *Does this image look like it contains hidden data?*",
+            "**Interpretation:** RAT Finder answers: *Does this image look like it contain hidden data?*",
             "A high score means forensic anomalies exist; it is not proof of a secret message."
         ])
 
-        ela_img = ela['ela_image'] if ela['success'] else None
+        ela_img = None
+        if isinstance(ela_details, dict) and 'diff_image' in ela_details:
+            ela_img = ela_details['diff_image']
         return ela_img, '\n'.join(lines)
     except Exception as e:
         return None, f"{_badge('ERROR', 'red')}\n\n{str(e)}"
@@ -312,6 +322,75 @@ HEADER = """
 
 Hide messages inside images. Detect hidden data. Find and repair corrupt files.
 """
+
+
+def _build_stego_cmd(subcommand, image_path, data, output, password, dct, bits, sensitivity, non_recursive, workers, visual_reports, reports_dir):
+    parts = ["python 2pac_stego.py", subcommand]
+    if subcommand == "hide":
+        if image_path:
+            parts.append(f"--image {image_path}")
+        if data:
+            parts.append(f'--data "{data}"')
+        if output:
+            parts.append(f"--output {output}")
+        if password:
+            parts.append(f"--password ****")
+        if dct:
+            parts.append("--dct")
+        if bits and not dct:
+            parts.append(f"--bits {bits}")
+    elif subcommand == "extract":
+        if image_path:
+            parts.append(f"--image {image_path}")
+        if password:
+            parts.append(f"--password ****")
+        if dct:
+            parts.append("--dct")
+        if bits and not dct:
+            parts.append(f"--bits {bits}")
+    elif subcommand == "detect":
+        if image_path:
+            parts.append(image_path)
+        if sensitivity != "medium":
+            parts.append(f"--sensitivity {sensitivity}")
+        if non_recursive:
+            parts.append("--non-recursive")
+        if workers and workers != 1:
+            parts.append(f"--workers {workers}")
+        if visual_reports:
+            parts.append("--visual-reports")
+        if reports_dir:
+            parts.append(f"--reports-dir {reports_dir}")
+    return " \\\n  ".join(parts) if len(parts) > 3 else " ".join(parts)
+
+
+def _build_scan_cmd(directory, action, move_to, check_file, thorough, check_visual, sensitivity,
+                    repair, backup_dir, formats, workers, delete, resume):
+    if check_file:
+        parts = ["python 2pac_scan.py", f"--check-file {check_file}"]
+    else:
+        parts = ["python 2pac_scan.py", directory or "./images"]
+    if action == "move" and move_to:
+        parts.append(f"--move-to {move_to}")
+    elif action == "delete":
+        parts.append("--delete")
+    if thorough:
+        parts.append("--thorough")
+    if check_visual:
+        parts.append("--check-visual")
+    if sensitivity != "medium":
+        parts.append(f"--sensitivity {sensitivity}")
+    if repair:
+        parts.append("--repair")
+    if backup_dir:
+        parts.append(f"--backup-dir {backup_dir}")
+    if formats:
+        parts.append(f"--formats {' '.join(formats)}")
+    if workers and workers != 1:
+        parts.append(f"--workers {workers}")
+    if resume:
+        parts.append(f"--resume {resume}")
+    return " \\\n  ".join(parts) if len(parts) > 3 else " ".join(parts)
 
 
 INTRO_SECTION = """
@@ -459,7 +538,7 @@ with gr.Blocks(title="2PAC") as demo:
                                       value='LSB - stable, high capacity', label="Method")
                     with gr.Row():
                         with gr.Column(scale=1):
-                            hide_in = gr.Image(label="Source image", type="numpy", height=300)
+                            hide_in = gr.Image(label="Source image", type="numpy", height=300, format="png")
                             with gr.Row():
                                 gr.Button("Load clean sample").click(fn=sample_clean_image, outputs=[hide_in])
                                 gr.Button("Load visual-damage sample").click(fn=sample_damaged_image, outputs=[hide_in])
@@ -468,7 +547,7 @@ with gr.Blocks(title="2PAC") as demo:
                             hide_bits = gr.Slider(1, 4, value=1, step=1, label="Bits/channel (LSB only)")
                             hide_btn = gr.Button("Embed", variant="primary")
                         with gr.Column(scale=1):
-                            hide_out_img = gr.Image(label="Output image", height=300)
+                            hide_out_img = gr.Image(label="Output image (download as PNG)", height=300, format="png")
                             hide_out_text = gr.Markdown()
 
                     def _hide_router(method_name, image, text, password, bits):
@@ -484,7 +563,7 @@ with gr.Blocks(title="2PAC") as demo:
                 with gr.Tab("Extract"):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            ext_in = gr.Image(label="Image with hidden data", type="numpy", height=300)
+                            ext_in = gr.Image(label="Image with hidden data", type="numpy", height=300, format="png")
                             gr.Button("Load LSB stego sample").click(fn=sample_lsb_stego_image, outputs=[ext_in])
                             ext_method = gr.Radio(['LSB', 'DCT'], value='LSB', label="Method")
                             ext_pass = gr.Textbox(label="Password", type="password", placeholder="if encrypted")
@@ -497,14 +576,14 @@ with gr.Blocks(title="2PAC") as demo:
                 with gr.Tab("Detect Hidden Data"):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            det_in = gr.Image(label="Image to analyze", type="numpy", height=300)
+                            det_in = gr.Image(label="Image to analyze", type="numpy", height=300, format="png")
                             with gr.Row():
                                 gr.Button("Load clean sample").click(fn=sample_clean_image, outputs=[det_in])
                                 gr.Button("Load LSB stego sample").click(fn=sample_lsb_stego_image, outputs=[det_in])
                             det_sens = gr.Slider(1, 10, value=5, step=1, label="Sensitivity")
                             det_btn = gr.Button("Run RAT Finder", variant="primary")
                         with gr.Column(scale=1):
-                            det_img = gr.Image(label="ELA visualization", height=300)
+                            det_img = gr.Image(label="ELA visualization", height=300, format="png")
                             det_out = gr.Markdown()
                     det_btn.click(fn=detect_stego, inputs=[det_in, det_sens], outputs=[det_img, det_out])
 
@@ -513,7 +592,7 @@ with gr.Blocks(title="2PAC") as demo:
                 with gr.Tab("Single Image Check"):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            val_in = gr.Image(label="Image to validate", type="numpy", height=300)
+                            val_in = gr.Image(label="Image to validate", type="numpy", height=300, format="png")
                             with gr.Row():
                                 gr.Button("Load clean sample").click(fn=sample_clean_image, outputs=[val_in])
                                 gr.Button("Load damaged sample").click(fn=sample_damaged_image, outputs=[val_in])
@@ -547,14 +626,72 @@ with gr.Blocks(title="2PAC") as demo:
                         "```"
                     )
 
-        with gr.Tab("CLI"):
-            gr.Markdown("## Local command-line usage")
-            gr.Markdown(CLI_REFERENCE)
+        with gr.Tab("CLI Builder"):
             gr.Markdown(
-                "The web app is for interactive use. The CLI is better for large folders, repair actions, resuming scans, and automation."
+                "## Command-Line Builder\n\n"
+                "Build the command you need, then copy and paste it into your terminal. "
+                "[Install 2PAC](https://github.com/ricyoung/2pac) locally to use the CLI."
             )
 
-    gr.Markdown("---\n[GitHub](https://github.com/ricyoung/2pac) | DeepNeuro.AI | All Eyez On Your Images")
+            with gr.Tabs():
+                with gr.Tab("Stego Tool"):
+                    stego_sub = gr.Radio(["hide", "extract", "detect"], value="hide", label="Subcommand")
+                    with gr.Row():
+                        with gr.Column():
+                            stego_image = gr.Textbox(label="Image path", placeholder="photo.png")
+                            stego_data = gr.Textbox(label="Text to hide", placeholder="secret message", visible=True)
+                            stego_output = gr.Textbox(label="Output path", placeholder="out.png")
+                            stego_password = gr.Textbox(label="Password", type="password", placeholder="optional")
+                        with gr.Column():
+                            stego_dct = gr.Checkbox(label="Use DCT mode")
+                            stego_bits = gr.Dropdown([1, 2, 3, 4], value=1, label="Bits/channel (LSB only)")
+                            stego_sens = gr.Dropdown(["low", "medium", "high"], value="medium", label="Sensitivity (detect only)")
+                            stego_workers = gr.Slider(1, 16, value=1, step=1, label="Workers (detect only)")
+                            stego_reports = gr.Checkbox(label="Visual reports (detect only)")
+                    stego_cmd_out = gr.Code(label="Generated command", language="shell", interactive=False)
+                    stego_sub.change(fn=_build_stego_cmd,
+                                     inputs=[stego_sub, stego_image, stego_data, stego_output,
+                                             stego_password, stego_dct, stego_bits,
+                                             stego_sens, gr.State(False), stego_workers,
+                                             stego_reports, gr.State("")],
+                                     outputs=[stego_cmd_out])
+                    for component in [stego_image, stego_data, stego_output, stego_password,
+                                      stego_dct, stego_bits, stego_sens, stego_workers, stego_reports]:
+                        component.change(fn=_build_stego_cmd,
+                                         inputs=[stego_sub, stego_image, stego_data, stego_output,
+                                                 stego_password, stego_dct, stego_bits,
+                                                 stego_sens, gr.State(False), stego_workers,
+                                                 stego_reports, gr.State("")],
+                                         outputs=[stego_cmd_out])
+
+                with gr.Tab("2PAC Scan"):
+                    with gr.Row():
+                        with gr.Column():
+                            scan_dir = gr.Textbox(label="Directory to scan", placeholder="./images", value="./images")
+                            scan_check_file = gr.Textbox(label="Or check single file", placeholder="leave blank for directory scan")
+                            scan_action = gr.Radio(["dry run (report only)", "move", "delete"], value="dry run (report only)", label="Action")
+                            scan_move_to = gr.Textbox(label="Move-to directory", placeholder="./quarantine", visible=False)
+                        with gr.Column():
+                            scan_thorough = gr.Checkbox(label="Thorough mode", value=True)
+                            scan_visual = gr.Checkbox(label="Visual corruption check")
+                            scan_sens = gr.Dropdown(["low", "medium", "high"], value="medium", label="Sensitivity")
+                            scan_repair = gr.Checkbox(label="Attempt repair")
+                            scan_backup = gr.Textbox(label="Backup directory", placeholder="./backups")
+                    with gr.Row():
+                        scan_fmts = gr.CheckboxGroup(["JPEG", "PNG", "GIF", "TIFF", "BMP", "WEBP"], label="Formats")
+                        scan_workers = gr.Slider(1, 16, value=1, step=1, label="Workers")
+                    scan_cmd_out = gr.Code(label="Generated command", language="shell", interactive=False)
+                    for component in [scan_dir, scan_check_file, scan_action, scan_move_to,
+                                      scan_thorough, scan_visual, scan_sens, scan_repair,
+                                      scan_backup, scan_fmts, scan_workers]:
+                        component.change(fn=_build_scan_cmd,
+                                         inputs=[scan_dir, scan_action, scan_move_to, scan_check_file,
+                                                 scan_thorough, scan_visual, scan_sens,
+                                                 scan_repair, scan_backup, scan_fmts, scan_workers,
+                                                 gr.State(False), gr.State("")],
+                                         outputs=[scan_cmd_out])
+
+    gr.Markdown("---\n[GitHub](https://github.com/ricyoung/2pac) | [DeepNeuro.AI](https://deepneuro.ai) | All Eyez On Your Images")
 
 
 if __name__ == "__main__":
