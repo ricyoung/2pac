@@ -68,27 +68,39 @@ def _file_path(file_obj):
 
 
 def sample_clean_image():
-    width, height = 320, 220
-    x = np.linspace(30, 230, width, dtype=np.uint8)
-    y = np.linspace(20, 180, height, dtype=np.uint8)
+    width, height = 320, 240
     arr = np.zeros((height, width, 3), dtype=np.uint8)
-    arr[:, :, 0] = x[None, :]
-    arr[:, :, 1] = y[:, None]
-    arr[:, :, 2] = 160
+    sky = np.linspace(135, 200, width, dtype=np.uint8)
+    arr[:140, :, 0] = sky[None, :] - 40
+    arr[:140, :, 1] = sky[None, :] - 10
+    arr[:140, :, 2] = sky[None, :] + 30
+    arr[140:, :, 0] = 34
+    arr[140:, :, 1] = 120
+    arr[140:, :, 2] = 50
+    arr[140:160, :, 0] = 80
+    arr[140:160, :, 1] = 160
+    arr[140:160, :, 2] = 70
     img = Image.fromarray(arr, 'RGB')
     draw = ImageDraw.Draw(img)
-    draw.ellipse((34, 42, 138, 146), outline=(255, 255, 255), width=5)
-    draw.rectangle((170, 60, 288, 160), outline=(80, 20, 180), width=5)
-    draw.text((34, 178), "2PAC clean sample", fill=(255, 255, 255))
+    draw.ellipse((220, 20, 280, 80), fill=(255, 220, 80))
+    draw.polygon([(40, 140), (60, 100), (80, 140)], fill=(20, 60, 20))
+    draw.polygon([(100, 140), (115, 110), (130, 140)], fill=(30, 70, 25))
+    draw.polygon([(200, 140), (225, 90), (250, 140)], fill=(25, 55, 20))
+    draw.rectangle((50, 160, 120, 200), fill=(180, 150, 100))
+    draw.polygon([(45, 160), (85, 130), (125, 160)], fill=(140, 50, 40))
+    draw.rectangle((75, 175, 95, 200), fill=(100, 70, 40))
+    draw.text((10, 210), "2PAC sample — clean image", fill=(255, 255, 255))
     return np.array(img)
 
 
 def sample_damaged_image():
     img = Image.fromarray(sample_clean_image(), 'RGB')
     draw = ImageDraw.Draw(img)
-    draw.rectangle((190, 32, 300, 95), fill=(128, 128, 128))
-    draw.rectangle((0, 165, 320, 220), fill=(18, 18, 18))
-    draw.text((18, 18), "visual damage sample", fill=(255, 240, 120))
+    draw.rectangle((130, 60, 320, 140), fill=(128, 128, 128))
+    draw.rectangle((0, 180, 320, 240), fill=(18, 18, 18))
+    draw.rectangle((50, 160, 120, 180), fill=(128, 128, 128))
+    draw.text((10, 195), "CORRUPTED REGION", fill=(255, 80, 80))
+    draw.text((10, 210), "2PAC sample — damaged image", fill=(255, 255, 255))
     return np.array(img)
 
 
@@ -392,7 +404,7 @@ def _build_ratfinder_cmd(subcommand, path, sensitivity, non_recursive, workers,
 HEADER = """
 # 2PAC + RAT Finder
 
-**2PAC** hides secret data inside images. **RAT Finder** catches problems — steganography, corruption, and bad files.
+**2PAC** hides data inside images. **RAT Finder** catches the rats — people sneaking hidden data through your images, or corrupt files breaking your collection.
 """
 
 
@@ -404,9 +416,9 @@ MEMORIAL = """
 INTRO_SECTION = """
 ### Two tools, two jobs.
 
-**2PAC** — You want to put data in. Hide a message inside an image so nobody else can see it. Or extract hidden data from one.
+**2PAC** — You want to put data in. Someone is sneaking information to the feds, hiding messages inside vacation photos, or exfiltrating data through image attachments. That's what 2PAC does — it hides text inside images so nobody knows it's there. You can also extract it back out.
 
-**RAT Finder** — You want to find out if an image has problems. Catch steganography (hidden data). Find corrupt JPEGs, broken PNGs, truncated files. Use a RAT to catch a RAT.
+**RAT Finder** — You want to catch a RAT. Someone sent you an image that looks normal but might have a secret payload hidden inside. Or you have a folder of images and some of them are corrupt — broken headers, truncated files, gray blocks where the photo should be. RAT Finder detects both: steganography and corruption. Use a RAT to catch a RAT.
 """
 
 
@@ -485,19 +497,21 @@ with gr.Blocks(title="2PAC + RAT Finder") as demo:
             with gr.Row():
                 with gr.Column():
                     gr.Markdown(
-                        "### 2PAC\n"
-                        "You want to **put data in**.\n\n"
-                        "- Hide messages with LSB or experimental DCT\n"
-                        "- Extract hidden messages\n"
-                        "- Password-protect your secrets"
+                        "### 2PAC — Put Data In\n"
+                        "You want to **hide data inside an image**.\n\n"
+                        "- Hide a message that nobody can see\n"
+                        "- Extract hidden messages from images\n"
+                        "- Password-protect your secrets\n\n"
+                        "Go to the **2PAC** tab to hide or extract data."
                     )
                 with gr.Column():
                     gr.Markdown(
-                        "### RAT Finder\n"
-                        "You want to **find problems**.\n\n"
-                        "- Detect steganography (hidden data) in any image\n"
-                        "- Check if a JPEG, PNG, or TIFF is corrupt\n"
-                        "- Batch-validate entire image collections"
+                        "### RAT Finder — Catch a RAT\n"
+                        "You want to **find out what's wrong with an image**.\n\n"
+                        "- Someone sent you a photo — is there a hidden payload?\n"
+                        "- Is this JPEG corrupt? Is this PNG truncated?\n"
+                        "- Batch-check entire folders for problems\n\n"
+                        "Go to the **RAT Finder** tab to analyze images."
                     )
             gr.Markdown(HOW_STEGO_WORKS)
             gr.Markdown(HOW_DETECTION_WORKS)

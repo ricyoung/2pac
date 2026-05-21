@@ -13,9 +13,11 @@ license: mit
 
 # 2PAC + RAT Finder
 
-**2PAC** hides secret data inside images. **RAT Finder** catches problems — hidden data, corrupt files, broken images.
+**2PAC** hides data inside images. **RAT Finder** catches the rats — people sneaking hidden data through your images, or corrupt files breaking your collection.
 
-You want to put data in — use **2PAC**. You want to find out if it's bad — use **RAT Finder**.
+You want to put data in — use **2PAC**. You want to catch a RAT — use **RAT Finder**.
+
+**Try it live:** [Hugging Face Space](https://huggingface.co/spaces/richardyoung/2pac) — includes a web UI and an interactive **CLI Builder** that generates copy-paste commands.
 
 ```
 pip install -r requirements.txt
@@ -23,7 +25,7 @@ pip install -r requirements.txt
 # Put data in
 python 2pac.py hide --image photo.png --data "secret" --output out.png
 
-# Find out if it's bad
+# Catch a RAT
 python ratfinder.py detect suspicious.png --sensitivity high
 python ratfinder.py check broken.jpg --check-visual
 ```
@@ -142,6 +144,12 @@ DCT steganography operates on the frequency domain (8×8 pixel blocks) instead o
 ---
 
 ## Quick Start
+
+### Option 1: Web UI (no install)
+
+Go to [richardyoung-2pac.hf.space](https://richardyoung-2pac.hf.space) — hide data, catch rats, check images, and build CLI commands right in your browser.
+
+### Option 2: Local install
 
 ```bash
 git clone https://github.com/ricyoung/2pac.git
