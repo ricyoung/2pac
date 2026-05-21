@@ -340,7 +340,7 @@ python 2pac_scan.py ./images --move-to ./bad --repair
 """
 
 
-with gr.Blocks(title="2PAC", theme=gr.themes.Soft(primary_hue="violet", secondary_hue="blue")) as demo:
+with gr.Blocks(title="2PAC") as demo:
     gr.Markdown(HEADER)
 
     with gr.Tabs():
@@ -473,4 +473,4 @@ with gr.Blocks(title="2PAC", theme=gr.themes.Soft(primary_hue="violet", secondar
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft(primary_hue="violet", secondary_hue="blue"))
