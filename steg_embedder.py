@@ -60,12 +60,12 @@ class StegEmbedder:
 
     def _bits_to_string(self, bits: str) -> str:
         """Convert binary representation back to string"""
-        chars = []
+        byte_list = []
         for i in range(0, len(bits), 8):
             byte = bits[i:i+8]
             if len(byte) == 8:
-                chars.append(chr(int(byte, 2)))
-        return ''.join(chars)
+                byte_list.append(int(byte, 2))
+        return bytes(byte_list).decode('utf-8', errors='replace')
 
     def _encrypt_data(self, data: str, password: str) -> bytes:
         """Simple XOR encryption with password-derived key"""
@@ -152,12 +152,12 @@ class StegEmbedder:
                     break
 
                 # Clear LSBs and set new bits
-                pixel = flat_array[i]
+                pixel = int(flat_array[i])
                 for bit in range(bits_per_channel):
                     if bit_index >= len(bit_string):
                         break
                     # Clear bit
-                    pixel = (pixel & ~(1 << bit))
+                    pixel = (pixel & ~(1 << bit)) & 0xFF
                     # Set new bit
                     if bit_string[bit_index] == '1':
                         pixel = pixel | (1 << bit)
@@ -219,7 +219,7 @@ class StegEmbedder:
             for i in range(len(flat_array)):
                 if bit_index >= header_bits:
                     break
-                pixel = flat_array[i]
+                pixel = int(flat_array[i])
                 for bit in range(bits_per_channel):
                     if bit_index >= header_bits:
                         break

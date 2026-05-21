@@ -6,3 +6,4 @@ numpy
 scipy
 matplotlib
 gradio>=4.0.0
+pytest

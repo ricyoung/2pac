@@ -22,49 +22,13 @@ import matplotlib.pyplot as plt
 from scipy import stats
 import colorama
 from tqdm import tqdm
+from utils import setup_logging
 
 # Initialize colorama
 colorama.init()
 
 # Version
 VERSION = "0.2.0"
-
-# Set up logging
-def setup_logging(verbose, no_color=False):
-    level = logging.DEBUG if verbose else logging.INFO
-    
-    # Define color codes
-    if not no_color:
-        # Color scheme
-        COLORS = {
-            'DEBUG': colorama.Fore.CYAN,
-            'INFO': colorama.Fore.GREEN,
-            'WARNING': colorama.Fore.YELLOW,
-            'ERROR': colorama.Fore.RED,
-            'CRITICAL': colorama.Fore.MAGENTA + colorama.Style.BRIGHT,
-            'RESET': colorama.Style.RESET_ALL
-        }
-        
-        # Custom formatter with colors
-        class ColoredFormatter(logging.Formatter):
-            def format(self, record):
-                levelname = record.levelname
-                if levelname in COLORS:
-                    record.levelname = f"{COLORS[levelname]}{levelname}{COLORS['RESET']}"
-                    record.msg = f"{COLORS[levelname]}{record.msg}{COLORS['RESET']}"
-                return super().format(record)
-                
-        formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
-    else:
-        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        
-    handler = logging.StreamHandler()
-    handler.setFormatter(formatter)
-    
-    logging.basicConfig(
-        level=level,
-        handlers=[handler]
-    )
 
 def print_banner():
     """Print RAT Finder themed ASCII art banner"""

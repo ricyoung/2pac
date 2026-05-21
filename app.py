@@ -1,563 +1,325 @@
 #!/usr/bin/env python3
 """
 2PAC: Picture Analyzer & Corruption Killer - Gradio Web Interface
-Steganography, image corruption detection, and security analysis
+
+Two unified tools:
+  python 2pac_stego.py hide|extract|detect ...
+  python 2pac_scan.py ...
 """
 
 import os
 import tempfile
 import gradio as gr
 from PIL import Image
-import matplotlib.pyplot as plt
 import io
 import base64
+import numpy as np
 
-# Import 2PAC modules
 from steg_embedder import StegEmbedder
+from dct_steg import DctStegEmbedder
 import rat_finder
 import find_bad_images
+from utils import slider_to_sensitivity
 
 
-# Initialize embedder
-embedder = StegEmbedder()
+lsb = StegEmbedder()
+dct = DctStegEmbedder()
 
 
-def hide_data_in_image(image, secret_text, password, bits_per_channel):
-    """
-    Tab 1: Hide data in an image using LSB steganography
-    """
+# ── LSB Embed ──────────────────────────────────────────────────────────
+
+def hide_lsb(image, secret_text, password, bits_per_channel):
     if image is None:
-        return None, "⚠️ Please upload an image first"
-
-    if not secret_text or len(secret_text.strip()) == 0:
-        return None, "⚠️ Please enter text to hide"
+        return None, "Upload an image first"
+    if not secret_text or not secret_text.strip():
+        return None, "Enter text to hide"
 
     try:
-        # Save uploaded image to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_input:
-            img = Image.fromarray(image)
-            img.save(tmp_input.name, 'PNG')
-            input_path = tmp_input.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            Image.fromarray(image).save(tmp.name, 'PNG')
+            input_path = tmp.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            output_path = tmp.name
 
-        # Create output file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp_output:
-            output_path = tmp_output.name
-
-        # Calculate capacity first
         img = Image.open(input_path)
-        capacity = embedder.calculate_capacity(img, bits_per_channel)
-
-        # Check if data fits
+        capacity = lsb.calculate_capacity(img, bits_per_channel)
         data_size = len(secret_text.encode('utf-8'))
+
         if data_size > capacity:
             os.unlink(input_path)
-            return None, f"❌ **Error:** Data too large!\n\n" \
-                        f"- **Data size:** {data_size:,} bytes\n" \
-                        f"- **Maximum capacity:** {capacity:,} bytes\n" \
-                        f"- **Overflow:** {data_size - capacity:,} bytes\n\n" \
-                        f"💡 Try: Shorter text, larger image, or more bits per channel"
+            return None, f"**Data too large**\n\n{data_size:,} bytes > {capacity:,} byte capacity\n\nUse a larger image or more bits per channel."
 
-        # Embed data
-        pwd = password if password and len(password) > 0 else None
-        success, message, stats = embedder.embed_data(
-            input_path,
-            secret_text,
-            output_path,
-            password=pwd,
-            bits_per_channel=bits_per_channel
-        )
-
-        # Clean up input
+        pwd = password if password else None
+        ok, msg, stats = lsb.embed_data(input_path, secret_text, output_path,
+                                        password=pwd, bits_per_channel=bits_per_channel)
         os.unlink(input_path)
 
-        if not success:
+        if not ok:
             if os.path.exists(output_path):
                 os.unlink(output_path)
-            return None, f"❌ **Error:** {message}"
+            return None, f"**Error:** {msg}"
 
-        # Load result image
         result_img = Image.open(output_path)
-
-        # Format success message
-        result_message = f"""
-✅ **Successfully Hidden!**
-
-📊 **Statistics:**
-- **Data hidden:** {stats['data_size']:,} bytes ({len(secret_text):,} characters)
-- **Image capacity:** {stats['capacity']:,} bytes
-- **Utilization:** {stats['utilization']}
-- **Encryption:** {"🔒 Yes" if stats['encrypted'] else "🔓 No"}
-- **LSB depth:** {stats['bits_per_channel']} bit(s) per channel
-- **Image dimensions:** {stats['image_size']}
-
-💾 **Download the image below** - your data is invisible to the naked eye!
-
-⚠️ **Important:**
-- Save as PNG (not JPEG - will destroy hidden data)
-- Keep your password safe if you used encryption
-"""
-
-        return result_img, result_message
-
+        result = (
+            f"**Embedded {stats['data_size']:,} bytes** | "
+            f"{'Encrypted' if stats['encrypted'] else 'Plaintext'} | "
+            f"{stats['bits_per_channel']} bit(s)/channel | "
+            f"Utilization: {stats['utilization']}"
+        )
+        return result_img, result
     except Exception as e:
-        if 'input_path' in locals() and os.path.exists(input_path):
-            os.unlink(input_path)
-        if 'output_path' in locals() and os.path.exists(output_path):
-            os.unlink(output_path)
-        return None, f"❌ **Error:** {str(e)}"
+        return None, f"**Error:** {str(e)}"
 
 
-def detect_hidden_data(image, sensitivity):
-    """
-    Tab 2: Detect steganography using RAT Finder analysis
-    """
+# ── DCT Embed ──────────────────────────────────────────────────────────
+
+def hide_dct(image, secret_text, password):
     if image is None:
-        return None, "⚠️ Please upload an image to analyze"
+        return None, "Upload an image first"
+    if not secret_text or not secret_text.strip():
+        return None, "Enter text to hide"
 
     try:
-        # Save uploaded image to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-            img = Image.fromarray(image)
-            img.save(tmp.name, 'PNG')
+            Image.fromarray(image).save(tmp.name, 'PNG')
+            input_path = tmp.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            output_path = tmp.name
+
+        pwd = password if password else None
+        ok, msg, stats = dct.embed_data(input_path, secret_text, output_path, password=pwd)
+        os.unlink(input_path)
+
+        if not ok:
+            if os.path.exists(output_path):
+                os.unlink(output_path)
+            return None, f"**Error:** {msg}"
+
+        result_img = Image.open(output_path)
+        result = (
+            f"**Embedded {stats['data_size']:,} bytes** | "
+            f"{'Encrypted' if stats['encrypted'] else 'Plaintext'} | "
+            f"DCT domain | "
+            f"Blocks: {stats['blocks_used']}/{stats['total_blocks']}"
+        )
+        return result_img, result
+    except Exception as e:
+        return None, f"**Error:** {str(e)}"
+
+
+# ── Extract (LSB + DCT) ───────────────────────────────────────────────
+
+def extract_data(image, password, bits_per_channel, method):
+    if image is None:
+        return "Upload an image first"
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            Image.fromarray(image).save(tmp.name, 'PNG')
             image_path = tmp.name
 
-        # Map slider to sensitivity
-        sens_map = {1: 'low', 2: 'low', 3: 'low', 4: 'medium', 5: 'medium',
-                   6: 'medium', 7: 'high', 8: 'high', 9: 'high', 10: 'high'}
-        sensitivity_str = sens_map.get(sensitivity, 'medium')
+        pwd = password if password else None
 
-        # Perform analysis
-        confidence, details = rat_finder.analyze_image(image_path, sensitivity=sensitivity_str)
+        if method == 'LSB':
+            ok, msg, data = lsb.extract_data(image_path, password=pwd,
+                                             bits_per_channel=bits_per_channel)
+        else:
+            ok, msg, data = dct.extract_data(image_path, password=pwd)
 
-        # Generate ELA visualization
-        ela_result = rat_finder.perform_ela_analysis(image_path)
-
-        # Clean up
         os.unlink(image_path)
 
-        # Create confidence indicator
+        if not ok:
+            return f"**{msg}**\n\nPossible: wrong password, wrong method, wrong bits, or no hidden data."
+
+        return f"**Extracted {len(data)} chars:**\n\n```\n{data}\n```"
+    except Exception as e:
+        return f"**Error:** {str(e)}"
+
+
+# ── Detect ─────────────────────────────────────────────────────────────
+
+def detect_stego(image, sensitivity):
+    if image is None:
+        return None, "Upload an image to analyze"
+
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            Image.fromarray(image).save(tmp.name, 'PNG')
+            image_path = tmp.name
+
+        sens = slider_to_sensitivity(sensitivity)
+        confidence, details = rat_finder.analyze_image(image_path, sensitivity=sens)
+        ela = rat_finder.perform_ela_analysis(image_path)
+        os.unlink(image_path)
+
         if confidence >= 70:
-            confidence_emoji = "🚨"
-            confidence_label = "HIGH SUSPICION"
+            label = "⚠ HIGH SUSPICION"
         elif confidence >= 40:
-            confidence_emoji = "⚠️"
-            confidence_label = "MODERATE SUSPICION"
+            label = "⚡ MODERATE"
         else:
-            confidence_emoji = "✅"
-            confidence_label = "LOW SUSPICION"
+            label = "✓ LOW SUSPICION"
 
-        # Format results
-        result_text = f"""
-{confidence_emoji} **{confidence_label}**
+        lines = [f"## {label}  ({confidence:.1f}%)", ""]
+        for d in details:
+            lines.append(f"- {d}")
+        lines.extend(["", "*High confidence = anomalies exist, not necessarily hidden data.*"])
 
-📊 **Confidence Score:** {confidence:.1f}%
-
-🔍 **Analysis Details:**
-"""
-
-        for detail in details:
-            result_text += f"\n• {detail}"
-
-        result_text += f"""
-
----
-
-**What does this mean?**
-
-- **ELA (Error Level Analysis):** Highlights areas with different compression levels
-  - Bright areas = potential manipulation or hidden data
-  - Uniform appearance = likely unmodified
-
-- **LSB Analysis:** Checks randomness in least significant bits
-- **Histogram Analysis:** Looks for statistical anomalies
-- **Metadata:** Examines EXIF data for suspicious tools
-- **File Structure:** Checks for trailing data
-
-💡 **High confidence doesn't mean data is hidden** - just that anomalies exist.
-Use the "Extract Data" tab if you suspect LSB steganography!
-"""
-
-        # Return ELA plot if available
-        if ela_result['success'] and ela_result['ela_image']:
-            return ela_result['ela_image'], result_text
-
-        return None, result_text
-
+        ela_img = ela['ela_image'] if ela['success'] else None
+        return ela_img, '\n'.join(lines)
     except Exception as e:
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
-        return None, f"❌ **Error:** {str(e)}"
+        return None, f"**Error:** {str(e)}"
 
 
-def extract_hidden_data(image, password, bits_per_channel):
-    """
-    Tab 2b: Extract data hidden with LSB steganography
-    """
+# ── Validate ───────────────────────────────────────────────────────────
+
+def validate_image(image, sensitivity, check_visual):
     if image is None:
-        return "⚠️ Please upload an image"
+        return "Upload an image to check"
 
     try:
-        # Save uploaded image to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-            img = Image.fromarray(image)
-            img.save(tmp.name, 'PNG')
+            Image.fromarray(image).save(tmp.name, 'PNG')
             image_path = tmp.name
 
-        # Attempt extraction
-        pwd = password if password and len(password) > 0 else None
-        success, message, extracted_data = embedder.extract_data(
-            image_path,
-            password=pwd,
-            bits_per_channel=bits_per_channel
-        )
-
-        # Clean up
-        os.unlink(image_path)
-
-        if not success:
-            return f"❌ **{message}**\n\nPossible reasons:\n" \
-                   f"• No data hidden in this image\n" \
-                   f"• Wrong password (if encrypted)\n" \
-                   f"• Wrong bits-per-channel setting\n" \
-                   f"• Image was modified/re-saved"
-
-        result = f"""
-✅ **Data Successfully Extracted!**
-
-📝 **Hidden Message:**
-
----
-{extracted_data}
----
-
-📊 **Extraction Info:**
-- **Data size:** {len(extracted_data)} characters
-- **Decryption:** {"🔒 Used" if pwd else "🔓 Not needed"}
-- **LSB depth:** {bits_per_channel} bit(s) per channel
-
-💡 Copy the message above - it has been successfully recovered from the image!
-"""
-        return result
-
-    except Exception as e:
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
-        return f"❌ **Error:** {str(e)}"
-
-
-def check_image_corruption(image, sensitivity, check_visual):
-    """
-    Tab 3: Check for image corruption and validate integrity
-    """
-    if image is None:
-        return "⚠️ Please upload an image to check"
-
-    try:
-        # Save uploaded image to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
-            img = Image.fromarray(image)
-            img.save(tmp.name, 'PNG')
-            image_path = tmp.name
-
-        # Map slider to sensitivity
-        sens_map = {1: 'low', 2: 'low', 3: 'low', 4: 'medium', 5: 'medium',
-                   6: 'medium', 7: 'high', 8: 'high', 9: 'high', 10: 'high'}
-        sensitivity_str = sens_map.get(sensitivity, 'medium')
-
-        # Validate image
-        is_valid = find_bad_images.is_valid_image(
-            image_path,
-            thorough=True,
-            sensitivity=sensitivity_str,
-            check_visual=check_visual
-        )
-
-        # Get diagnostic details
+        sens = slider_to_sensitivity(sensitivity)
+        valid = find_bad_images.is_valid_image(image_path, thorough=True,
+                                               sensitivity=sens,
+                                               check_visual=check_visual)
         issues = find_bad_images.diagnose_image_issue(image_path)
-
-        # Clean up
         os.unlink(image_path)
 
-        # Format results
-        if is_valid:
-            result = f"""
-✅ **IMAGE IS VALID**
-
-The image passed all validation checks:
-- ✅ File structure is intact
-- ✅ Headers are valid
-- ✅ No truncation detected
-- ✅ Metadata is consistent
-"""
-            if check_visual:
-                result += "- ✅ No visual corruption detected\n"
-
-            result += "\n💚 **This image is safe to use!**"
-
+        if valid:
+            return (
+                "## ✓ Image is valid\n\n"
+                "File structure, headers, metadata, and visual content all check out.\n\n"
+                "*Safe to use.*"
+            )
         else:
-            result = f"""
-⚠️ **ISSUES DETECTED**
-
-The image has validation problems:
-
-"""
+            lines = ["## ✗ Issues detected", ""]
             if issues:
-                for issue_type, issue_desc in issues.items():
-                    result += f"**{issue_type}:**\n{issue_desc}\n\n"
+                for issue_type, desc in issues.items():
+                    lines.append(f"**{issue_type}:** {desc}")
             else:
-                result += "❌ Image failed validation but no specific issues identified.\n\n"
+                lines.append("Image failed validation.")
+            lines.extend(["", "*Try re-downloading the file or repairing it.*"])
+            return '\n'.join(lines)
+    except Exception as e:
+        return f"**Error:** {str(e)}"
 
-            result += """
+
+# ── UI ─────────────────────────────────────────────────────────────────
+
+HEADER = """
+# 2PAC: Picture Analyzer & Corruption Killer
+
+**Hide messages in images. Detect hidden data. Validate image integrity.**
+"""
+
+FOOTER = """
 ---
 
-**What to do:**
-- Image may be corrupted or incomplete
-- Try re-downloading the original file
-- Check if the file was properly transferred
-- Use image repair tools if needed
+**[GitHub](https://github.com/ricyoung/2pac)**  |  **DeepNeuro.AI**
 """
 
-        return result
+with gr.Blocks(title="2PAC") as demo:
 
-    except Exception as e:
-        if 'image_path' in locals() and os.path.exists(image_path):
-            os.unlink(image_path)
-        return f"❌ **Error:** {str(e)}"
-
-
-# Create Gradio interface
-with gr.Blocks(
-    title="2PAC: Picture Analyzer & Corruption Killer",
-    theme=gr.themes.Soft(
-        primary_hue="violet",
-        secondary_hue="blue",
-    )
-) as demo:
-
-    gr.Markdown("""
-# 🔫 2PAC: Picture Analyzer & Corruption Killer
-
-**Advanced image security and steganography toolkit**
-
-Hide secret messages in images, detect hidden data, and validate image integrity.
-    """)
+    gr.Markdown(HEADER)
 
     with gr.Tabs():
 
-        # TAB 1: Hide Data
-        with gr.Tab("🔒 Hide Secret Data"):
-            gr.Markdown("""
-## Hide Data in Image (LSB Steganography)
+        # ═══ HIDE ══════════════════════════════════════════════════════
 
-Invisibly hide text inside an image using Least Significant Bit encoding.
-The image will look identical to the naked eye, but contains your secret message!
-            """)
-
-            with gr.Row():
-                with gr.Column(scale=1):
-                    hide_input_image = gr.Image(
-                        label="Upload Image",
-                        type="numpy",
-                        height=300
-                    )
-                    hide_secret_text = gr.Textbox(
-                        label="Secret Text to Hide",
-                        placeholder="Enter your secret message here...",
-                        lines=5,
-                        max_lines=10
-                    )
-                    with gr.Row():
-                        hide_password = gr.Textbox(
-                            label="Password (Optional - for encryption)",
-                            placeholder="Leave empty for no encryption",
-                            type="password"
-                        )
-                        hide_bits = gr.Slider(
-                            minimum=1,
-                            maximum=4,
-                            value=1,
-                            step=1,
-                            label="LSB Depth (higher = more capacity, less subtle)",
-                            info="1=subtle, 4=maximum capacity"
-                        )
-
-                    hide_button = gr.Button("🔒 Hide Data in Image", variant="primary", size="lg")
-
-                with gr.Column(scale=1):
-                    hide_output_image = gr.Image(label="Result Image (Download This!)", height=300)
-                    hide_output_text = gr.Markdown(label="Status")
-
-            hide_button.click(
-                fn=hide_data_in_image,
-                inputs=[hide_input_image, hide_secret_text, hide_password, hide_bits],
-                outputs=[hide_output_image, hide_output_text]
-            )
-
-            gr.Markdown("""
----
-**💡 Tips:**
-- Use PNG images for best results (JPEG will destroy hidden data!)
-- Larger images can hold more data
-- Password encryption adds extra security layer
-- LSB depth: 1-2 bits is undetectable, 3-4 bits provides more capacity
-            """)
-
-        # TAB 2: Detect & Extract
-        with gr.Tab("🔍 Detect & Extract Hidden Data"):
-            gr.Markdown("""
-## Detect Steganography & Extract Hidden Data
-
-Use advanced analysis techniques to detect hidden data in images, or extract data hidden with this tool.
-            """)
+        with gr.Tab("Hide Data"):
 
             with gr.Tabs():
-
-                # Sub-tab: Detection
-                with gr.Tab("🔎 Detect (Analysis)"):
-                    gr.Markdown("""
-### Steganography Detection (RAT Finder)
-
-Analyzes images for signs of hidden data using multiple techniques:
-ELA, LSB analysis, histogram analysis, metadata inspection, and more.
-                    """)
-
+                with gr.Tab("LSB (fast, high capacity)"):
                     with gr.Row():
                         with gr.Column(scale=1):
-                            detect_input_image = gr.Image(
-                                label="Upload Image to Analyze",
-                                type="numpy",
-                                height=300
-                            )
-                            detect_sensitivity = gr.Slider(
-                                minimum=1,
-                                maximum=10,
-                                value=5,
-                                step=1,
-                                label="Detection Sensitivity",
-                                info="Higher = more thorough but more false positives"
-                            )
-                            detect_button = gr.Button("🔍 Analyze for Hidden Data", variant="primary", size="lg")
-
-                        with gr.Column(scale=1):
-                            detect_output_image = gr.Image(label="ELA Visualization", height=300)
-                            detect_output_text = gr.Markdown(label="Analysis Results")
-
-                    detect_button.click(
-                        fn=detect_hidden_data,
-                        inputs=[detect_input_image, detect_sensitivity],
-                        outputs=[detect_output_image, detect_output_text]
-                    )
-
-                # Sub-tab: Extraction
-                with gr.Tab("📤 Extract Data"):
-                    gr.Markdown("""
-### Extract Hidden Data (LSB Extraction)
-
-If you have an image created with the "Hide Data" tool, extract the hidden message here.
-                    """)
-
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            extract_input_image = gr.Image(
-                                label="Upload Image with Hidden Data",
-                                type="numpy",
-                                height=300
-                            )
+                            lsb_in = gr.Image(label="Source image", type="numpy", height=280)
+                            lsb_text = gr.Textbox(label="Text to hide", lines=4, placeholder="Type your secret...")
                             with gr.Row():
-                                extract_password = gr.Textbox(
-                                    label="Password (if encrypted)",
-                                    placeholder="Leave empty if not encrypted",
-                                    type="password"
-                                )
-                                extract_bits = gr.Slider(
-                                    minimum=1,
-                                    maximum=4,
-                                    value=1,
-                                    step=1,
-                                    label="LSB Depth (must match encoding)",
-                                    info="Use same value as when hiding"
-                                )
-                            extract_button = gr.Button("📤 Extract Hidden Data", variant="primary", size="lg")
+                                lsb_pass = gr.Textbox(label="Password", type="password", placeholder="optional")
+                                lsb_bits = gr.Slider(1, 4, value=1, step=1, label="Bits/channel",
+                                                     info="1=subtle  ·  4=max capacity")
+                            lsb_btn = gr.Button("Embed with LSB", variant="primary")
 
                         with gr.Column(scale=1):
-                            extract_output_text = gr.Markdown(label="Extracted Data")
+                            lsb_out = gr.Image(label="Stego image (download this)", height=280)
+                            lsb_info = gr.Markdown()
 
-                    extract_button.click(
-                        fn=extract_hidden_data,
-                        inputs=[extract_input_image, extract_password, extract_bits],
-                        outputs=[extract_output_text]
-                    )
+                    lsb_btn.click(fn=hide_lsb, inputs=[lsb_in, lsb_text, lsb_pass, lsb_bits],
+                                  outputs=[lsb_out, lsb_info])
 
-        # TAB 3: Check Corruption
-        with gr.Tab("🛡️ Check Image Integrity"):
-            gr.Markdown("""
-## Image Corruption & Validation
+                with gr.Tab("DCT (harder to detect, lower capacity)"):
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            dct_in = gr.Image(label="Source image", type="numpy", height=280)
+                            dct_text = gr.Textbox(label="Text to hide", lines=4, placeholder="Type your secret...")
+                            dct_pass = gr.Textbox(label="Password", type="password", placeholder="optional")
+                            dct_btn = gr.Button("Embed with DCT", variant="primary")
 
-Thoroughly validate image files for corruption, truncation, and structural issues.
-Detects damaged headers, incomplete data, and visual artifacts.
-            """)
+                        with gr.Column(scale=1):
+                            dct_out = gr.Image(label="Stego image (download this)", height=280)
+                            dct_info = gr.Markdown()
 
+                    dct_btn.click(fn=hide_dct, inputs=[dct_in, dct_text, dct_pass],
+                                  outputs=[dct_out, dct_info])
+
+            gr.Markdown("**Tip:** Save output as PNG. JPEG recompression destroys hidden data.")
+
+        # ═══ EXTRACT ════════════════════════════════════════════════════
+
+        with gr.Tab("Extract Data"):
             with gr.Row():
                 with gr.Column(scale=1):
-                    check_input_image = gr.Image(
-                        label="Upload Image to Validate",
-                        type="numpy",
-                        height=300
-                    )
+                    ext_in = gr.Image(label="Image with hidden data", type="numpy", height=280)
                     with gr.Row():
-                        check_sensitivity = gr.Slider(
-                            minimum=1,
-                            maximum=10,
-                            value=5,
-                            step=1,
-                            label="Validation Sensitivity",
-                            info="Higher = more strict validation"
-                        )
-                        check_visual = gr.Checkbox(
-                            label="Check for Visual Corruption",
-                            value=True,
-                            info="Slower but detects visual artifacts"
-                        )
-                    check_button = gr.Button("🛡️ Validate Image", variant="primary", size="lg")
+                        ext_pass = gr.Textbox(label="Password", type="password", placeholder="if encrypted")
+                        ext_bits = gr.Slider(1, 4, value=1, step=1, label="Bits/channel (LSB only)")
+                    ext_method = gr.Radio(['LSB', 'DCT'], value='LSB', label="Method")
+                    ext_btn = gr.Button("Extract", variant="primary")
 
                 with gr.Column(scale=1):
-                    check_output_text = gr.Markdown(label="Validation Results")
+                    ext_out = gr.Markdown()
 
-            check_button.click(
-                fn=check_image_corruption,
-                inputs=[check_input_image, check_sensitivity, check_visual],
-                outputs=[check_output_text]
-            )
+            ext_btn.click(fn=extract_data, inputs=[ext_in, ext_pass, ext_bits, ext_method],
+                          outputs=[ext_out])
 
-            gr.Markdown("""
----
-**🔍 Checks Performed:**
-- ✅ File format validation (JPEG, PNG, GIF, etc.)
-- ✅ Header integrity
-- ✅ Data completeness
-- ✅ Metadata consistency
-- ✅ Visual corruption detection (black/gray regions)
-- ✅ Structure validation
-            """)
+        # ═══ DETECT ═════════════════════════════════════════════════════
 
-    gr.Markdown("""
----
+        with gr.Tab("Detect"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    det_in = gr.Image(label="Image to analyze", type="numpy", height=280)
+                    det_sens = gr.Slider(1, 10, value=5, step=1, label="Sensitivity")
+                    det_btn = gr.Button("Analyze", variant="primary")
 
-## About 2PAC
+                with gr.Column(scale=1):
+                    det_img = gr.Image(label="ELA visualization", height=280)
+                    det_out = gr.Markdown()
 
-**2PAC** (Picture Analyzer & Corruption Killer) is a comprehensive image security toolkit combining:
-- **LSB Steganography**: Hide and extract secret messages in images
-- **RAT Finder**: Advanced steganography detection using 7+ analysis techniques
-- **Image Validation**: Detect corruption and structural issues
+            det_btn.click(fn=detect_stego, inputs=[det_in, det_sens],
+                          outputs=[det_img, det_out])
 
-🔗 **GitHub:** [github.com/ricyoung/2pac](https://github.com/ricyoung/2pac)
-🌐 **More Tools:** [demo.deepneuro.ai](https://demo.deepneuro.ai)
+        # ═══ VALIDATE ═══════════════════════════════════════════════════
 
----
+        with gr.Tab("Validate"):
+            with gr.Row():
+                with gr.Column(scale=1):
+                    val_in = gr.Image(label="Image to check", type="numpy", height=280)
+                    with gr.Row():
+                        val_sens = gr.Slider(1, 10, value=5, step=1, label="Sensitivity")
+                        val_vis = gr.Checkbox(value=True, label="Visual corruption check")
+                    val_btn = gr.Button("Check Integrity", variant="primary")
 
-*Built with ❤️ by DeepNeuro.AI | Powered by Gradio & Hugging Face Spaces*
-    """)
+                with gr.Column(scale=1):
+                    val_out = gr.Markdown()
+
+            val_btn.click(fn=validate_image, inputs=[val_in, val_sens, val_vis],
+                          outputs=[val_out])
+
+    gr.Markdown(FOOTER)
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=gr.themes.Soft(primary_hue="violet", secondary_hue="blue"))
