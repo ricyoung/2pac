@@ -310,18 +310,100 @@ def batch_validate(files, sensitivity, check_visual):
 HEADER = """
 # 2PAC: Picture Analyzer & Corruption Killer
 
-2PAC has **two jobs**: the **Stego Tool** hides or detects secret data, and **2PAC Scan** checks whether image files are damaged.
+Hide messages inside images. Detect hidden data. Find and repair corrupt files.
 """
 
 
-DIFFERENCE_TABLE = """
-| | RAT Finder (`2pac_stego.py detect`) | 2PAC Scan (`2pac_scan.py`) |
+INTRO_SECTION = """
+### Images can hide secrets — and they can also break.
+
+Every digital image is just a grid of numbers. 2PAC gives you two independent tools to work with those numbers:
+
+**Stego Tool** — Hide text inside an image so no one else can see it, extract hidden text, or run forensic analysis to detect whether an image has been tampered with.
+
+**2PAC Scan** — Check whether image files are structurally intact, detect corrupted or truncated files, and attempt repairs.
+
+These are different problems. A perfectly valid image can contain a hidden message, and a corrupt image might not contain anything at all. Pick the tool that matches your question.
+"""
+
+
+TOOL_COMPARISON = """
+### Which tool do I need?
+
+| | **Stego Tool** | **2PAC Scan** |
 |---|---|---|
-| **What** | Detects steganography: hidden messages in images | Detects corruption: broken/damaged image files |
-| **Looks for** | LSB patterns, ELA artifacts, histogram anomalies | Truncated files, bad headers, visual damage, decoder errors |
-| **Use case** | "Does this image contain a secret message?" | "Is this image file corrupted or safe to use?" |
-| **Repair** | No | Yes, for JPEG/PNG/GIF in CLI mode |
-| **Output** | Confidence score + forensic details | Bad file list + repair/move/delete options |
+| **Your question** | *"Is there a hidden message in this image?"* | *"Is this image file broken?"* |
+| **What it finds** | LSB patterns, frequency anomalies, histogram irregularities, stego tool signatures in metadata | Truncated files, bad headers, decoder errors, gray/black corrupted regions |
+| **What it can do** | Hide text, extract it, or just detect signs of steganography | Validate integrity, diagnose problems, attempt repair |
+| **Formats** | PNG only (JPEG destroys hidden data) | JPEG, PNG, GIF, TIFF, BMP, WebP, HEIC, ICO |
+| **Best for** | Security research, CTF challenges, privacy | Photo archives, downloaded collections, data recovery |
+"""
+
+
+HOW_STEGO_WORKS = """
+### How does image steganography work?
+
+Every pixel in a digital image is stored as numbers — three channels (red, green, blue), each 0–255. That's 8 binary bits per channel.
+
+LSB steganography changes only the **last bit** — the least significant bit. The visual change is invisible:
+
+```
+Original pixel:   R=156   G=89    B=201
+Binary:           10011100 01011001 11001001
+                                            ^--- this bit stores your secret
+Modified pixel:   R=156   G=88    B=201     (89→88, undetectable to the eye)
+```
+
+A 1000×1000 image can hide roughly **375 KB** of text this way. Add a password and the data is XOR-encrypted before embedding.
+
+2PAC also offers **DCT mode** (experimental) which hides data in the frequency domain instead of pixel values — harder to detect but with much lower capacity.
+"""
+
+
+HOW_DETECTION_WORKS = """
+### How does steganography detection work?
+
+RAT Finder runs **seven forensic techniques** and combines them into a confidence score:
+
+- **LSB Chi-Squared** — Natural images have structured least-significant bits. Steganography makes them uniformly random. A statistical test catches this.
+- **Histogram Analysis** — Systematic LSB modification creates a distinctive "comb pattern" in color histograms where even and odd values become suspiciously similar.
+- **Error Level Analysis** — Re-saves the image and measures pixel differences. Edited or modified regions show different error levels.
+- **Visual Noise** — Compares noise levels across color channels. Steganography that embeds more data in one channel creates a detectable imbalance.
+- **Metadata Inspection** — Scans EXIF data for known steganography tool signatures (OutGuess, StegHide, JSteg, F5, etc.).
+- **File Size Anomalies** — Compares file size against expected ranges for the image dimensions. Embedded payloads bloat files.
+- **Trailing Data** — Checks for data appended after the file's official end-of-file marker.
+
+A confidence score ≥ 70% means HIGH SUSPICION. The tool answers *"does this image show forensic signs of hidden data?"* — it does not prove a message exists.
+"""
+
+
+HOW_SCAN_WORKS = """
+### How does image validation work?
+
+2PAC Scan runs images through a multi-step pipeline:
+
+1. **Header check** — Quick structural validation
+2. **Full pixel decode** — Reads every pixel to catch truncation
+3. **Visual corruption** *(optional)* — Detects gray/black blocks from damaged storage or incomplete writes
+4. **Structure audit** — JPEG marker chain or PNG chunk validation
+5. **Re-encode test** — Catches subtle decoder errors
+6. **External tools** — Runs `exiftool` and ImageMagick if available
+
+Steps 4–6 only run in thorough mode. For large collections, the basic pipeline is fast and usually sufficient.
+
+When repair is enabled, 2PAC re-saves the image in the correct format (JPEG, PNG, GIF). It works when pixel data is intact but internal structure is broken.
+"""
+
+
+QUICK_START_GUIDE = """
+### Quick start
+
+1. Go to **Stego Tool → Hide** and upload an image, type a message, and click Embed
+2. Go to **Stego Tool → Extract** and upload the output image to recover your text
+3. Go to **Stego Tool → Detect** and upload any image to run RAT Finder's forensic analysis
+4. Go to **2PAC Scan** and upload images to check for corruption
+
+Or use the CLI for automation, large folders, and repair workflows:
 """
 
 
@@ -345,8 +427,8 @@ with gr.Blocks(title="2PAC") as demo:
 
     with gr.Tabs():
         with gr.Tab("Start Here"):
-            gr.Markdown("## Choose the right tool")
-            gr.Markdown(DIFFERENCE_TABLE)
+            gr.Markdown(INTRO_SECTION)
+            gr.Markdown(TOOL_COMPARISON)
             with gr.Row():
                 with gr.Column():
                     gr.Markdown(
@@ -364,7 +446,10 @@ with gr.Blocks(title="2PAC") as demo:
                         "- Detect truncation, bad headers, and visual damage\n"
                         "- Use CLI repair mode for recoverable files"
                     )
-            gr.Markdown("## CLI equivalents")
+            gr.Markdown(HOW_STEGO_WORKS)
+            gr.Markdown(HOW_DETECTION_WORKS)
+            gr.Markdown(HOW_SCAN_WORKS)
+            gr.Markdown(QUICK_START_GUIDE)
             gr.Markdown(CLI_REFERENCE)
 
         with gr.Tab("Stego Tool"):
