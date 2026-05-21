@@ -78,9 +78,18 @@ python 2pac_scan.py ./images --resume <session_id>
 | **Repair** | No | Yes — JPEG/PNG/GIF repair |
 | **Output** | Confidence score + forensic details | Bad file list + repair results + move/delete actions |
 
-### Gradio Web App
+### Gradio Web App / Hugging Face Space
 
-Run `python app.py` for the browser-based interface with tabs for **Hide**, **Extract**, **Detect**, and **Validate**.
+Run `python app.py` for the browser-based interface, or use the Hugging Face Space. The UI is organized around the same two-tool model:
+
+| Tab | Purpose |
+|---|---|
+| **Start Here** | Explains RAT Finder vs 2PAC Scan and shows CLI equivalents |
+| **Stego Tool** | Hide, extract, and detect hidden data |
+| **2PAC Scan** | Single-image validation, batch validation, repair guidance |
+| **CLI** | Local command examples for automation |
+
+The Space includes generated sample images and batch validation without storing binary image assets in the repository.
 
 ---
 

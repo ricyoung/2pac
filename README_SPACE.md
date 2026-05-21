@@ -10,97 +10,64 @@ pinned: false
 license: mit
 ---
 
-# 🔫 2PAC: Picture Analyzer & Corruption Killer
+# 2PAC: Picture Analyzer & Corruption Killer
 
-**Advanced image security and steganography toolkit**
+**Two image-security tools in one Space:**
 
-## Features
+| Tool | Question it answers |
+|---|---|
+| **Stego Tool** | Does this image hide a secret message? Can I hide or extract one? |
+| **2PAC Scan** | Is this image damaged, truncated, corrupt, or visually broken? |
 
-### 🔒 Hide Secret Data
-Invisibly hide text messages inside images using **LSB (Least Significant Bit) steganography**:
-- Hide text of any length (capacity depends on image size)
-- Optional password encryption for added security
-- Adjustable LSB depth (1-4 bits per channel)
-- PNG output preserves hidden data perfectly
+The web app is organized around those two jobs so RAT Finder and 2PAC Scan are not confused.
 
-### 🔍 Detect & Extract Hidden Data
-Advanced steganography detection using **RAT Finder** technology:
-- **ELA (Error Level Analysis)** - Highlights compression artifacts
-- **LSB Analysis** - Detects randomness in least significant bits
-- **Histogram Analysis** - Finds statistical anomalies
-- **Metadata Inspection** - Checks EXIF data for suspicious tools
-- **Extract Data** - Recover messages hidden with this tool
+## What You Can Do In The Space
 
-### 🛡️ Check Image Integrity
-Comprehensive image validation and corruption detection:
-- File format validation (JPEG, PNG, GIF, TIFF, BMP, WebP, HEIC)
-- Header integrity checks
-- Data completeness verification
-- Visual corruption detection (black/gray regions)
-- Structure validation
+### Stego Tool
 
-## How It Works
+- Hide text using **LSB steganography**: stable, high capacity, best for reliable extraction
+- Try **DCT steganography**: frequency-domain, harder to detect, experimental extraction reliability
+- Extract messages created by 2PAC
+- Run **RAT Finder** to detect signs of hidden data
+- Load generated demo images directly in the UI, with no binary files stored in the repo
 
-### LSB Steganography
-The tool hides data in the **least significant bits** of pixel values. Since changing the last 1-2 bits of a pixel value (e.g., changing 200 to 201) is imperceptible to the human eye, we can encode arbitrary data without visible changes to the image.
+### 2PAC Scan
 
-**Example:**
-- Original pixel: RGB(156, 89, 201) = `10011100, 01011001, 11001001`
-- After hiding bit '1': RGB(156, 89, 201) = `10011100, 01011001, 11001001` (last bit already 1)
-- After hiding bit '0': RGB(156, 88, 201) = `10011100, 01011000, 11001001` (89→88)
+- Validate one image for corruption, bad headers, truncation, and visual damage
+- Batch-check multiple uploads and return a status table
+- See CLI repair guidance for local repair/move/delete workflows
 
-This allows hiding hundreds to thousands of bytes in a typical photo!
+## RAT Finder vs 2PAC Scan
 
-### Steganography Detection
-The RAT Finder uses multiple forensic techniques:
+| | RAT Finder (`2pac_stego.py detect`) | 2PAC Scan (`2pac_scan.py`) |
+|---|---|---|
+| **What** | Detects steganography: hidden messages in images | Detects corruption: broken/damaged image files |
+| **Looks for** | Suspicious LSB patterns, ELA artifacts, histogram anomalies | Truncated files, bad JPEG/PNG headers, visual damage, decoder errors |
+| **Use case** | "Does this image contain a secret message?" | "Is this image file corrupted or safe to use?" |
+| **Repair** | No | Yes, for JPEG/PNG/GIF in CLI mode |
+| **Output** | Confidence score + forensic details | Bad file list + repair results + move/delete actions |
 
-1. **ELA (Error Level Analysis)**: Re-saves the image at a known quality and compares compression artifacts. Hidden data or manipulation shows as bright areas.
+## Local CLI
 
-2. **LSB Analysis**: Statistical tests check if the least significant bits are too random (hidden data) or too uniform (natural image).
+```bash
+# Stego Tool
+python 2pac_stego.py hide --image photo.png --data "secret" --output out.png
+python 2pac_stego.py extract --image out.png
+python 2pac_stego.py detect suspicious.png --sensitivity high
 
-3. **Histogram Analysis**: Analyzes color distribution for anomalies typical of steganography.
+# 2PAC Scan
+python 2pac_scan.py ./images --thorough
+python 2pac_scan.py --check-file broken.jpg --check-visual
+python 2pac_scan.py ./images --move-to ./bad --repair
+```
 
-4. **Metadata Forensics**: Checks EXIF data for steganography tools or suspicious editing history.
+## Notes
 
-## Usage Tips
+- Keep stego output as **PNG**. JPEG recompression destroys hidden data.
+- RAT Finder confidence is not proof of a secret message. It means forensic anomalies exist.
+- The Space diagnoses images. Full repair workflows are available through the CLI.
+- Processing happens in the active Space session; temporary files are deleted after use.
 
-### For Hiding Data:
-- ✅ Use **PNG** images (JPEG compression destroys hidden data)
-- ✅ Larger images = more capacity
-- ✅ Use 1-2 bits per channel for undetectable hiding
-- ✅ Add password encryption for sensitive data
-- ⚠️ Don't re-save or edit the output image!
+Created by [Richard Young](https://github.com/ricyoung) | DeepNeuro.AI
 
-### For Detection:
-- 🔍 Higher sensitivity = more thorough but more false positives
-- 📊 Check the ELA image for bright spots (potential hiding)
-- 💡 High confidence doesn't guarantee hidden data (could be compression artifacts)
-- 🔓 Use "Extract Data" tab if you suspect LSB steganography
-
-### For Corruption Checking:
-- 🛡️ Enable visual corruption check for damaged photos
-- ⚙️ Higher sensitivity for stricter validation
-- 📁 Useful before archiving important photo collections
-
-## About
-
-**2PAC** combines three powerful tools:
-- **LSB Steganography** engine (new!)
-- **RAT Finder** - Advanced steg detection
-- **Image Validator** - Corruption checker
-
-Created by [Richard Young](https://github.com/ricyoung) | Part of [DeepNeuro.AI](https://deepneuro.ai)
-
-🔗 **GitHub Repository:** [github.com/ricyoung/2pac](https://github.com/ricyoung/2pac)
-🌐 **More Tools:** [demo.deepneuro.ai](https://demo.deepneuro.ai)
-
-## Security & Privacy
-
-- ✅ All processing happens in your browser session (Hugging Face Space)
-- ✅ Images are not stored or logged
-- ✅ Temporary files are deleted after processing
-- ✅ Your hidden data and passwords are never saved
-
----
-
-*"All Eyez On Your Images" 👁️*
+In memory of Jeff Young. *All Eyez On Your Images.*

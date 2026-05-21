@@ -7,3 +7,5 @@ scipy
 matplotlib
 gradio>=4.0.0
 pytest
+urllib3
+audioop-lts
