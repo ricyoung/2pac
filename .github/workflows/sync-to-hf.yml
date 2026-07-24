@@ -22,6 +22,7 @@ jobs:
           # Create a single-commit orphan branch to avoid pushing
           # historical binary files that HF rejects
           git checkout --orphan hf-sync
+          git add -A
           git commit -m "Sync to HF Space: $(git log -1 --format=%s origin/main)"
 
           git remote add space https://richardyoung:$HF_TOKEN@huggingface.co/spaces/richardyoung/2pac || true
