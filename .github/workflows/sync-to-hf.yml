@@ -6,9 +6,14 @@ on:
       - main
     paths:
       - 'app.py'
+      - '2pac.py'
+      - 'ratfinder.py'
       - 'steg_embedder.py'
+      - 'rdh_embedder.py'
+      - 'dct_steg.py'
       - 'rat_finder.py'
-      - 'find_bad_images.py'
+      - 'utils.py'
+      - 'find_bad_images/**'
       - 'requirements.txt'
       - 'README.md'
 
