@@ -1,19 +1,35 @@
 # GitHub Repository Metadata
 
 ## Short Description
-Find and eliminate corrupt image files with visual detection. In memory of Jeff Young.
+Hide data in images. Catch the rats. 2PAC steganography toolkit with 9 forensic detectors, pixel scattering, reversible data hiding, and image validation.
 
 ## Detailed Description
-2PAC (Picture Analyzer & Corruption killer) is a lightning-fast tool for finding and eliminating corrupt image files from your photo collection. It includes intelligent visual corruption detection to identify images with large gray/black areas that traditional validation misses. Unlike other tools, 2PAC can distinguish between technical corruption and visible corruption, helping you preserve viewable images while eliminating truly damaged ones.
+2PAC + RAT Finder is a two-tool steganography toolkit.
+
+**2PAC** hides data inside images using three methods: LSB steganography (stable, ~375 KB per megapixel), pixel scattering (password-seeded permutation that defeats sequential statistical detectors), and reversible data hiding via histogram shifting (original image perfectly restored after extraction). Optional XOR encryption with password protection.
+
+**RAT Finder** catches hidden data and corrupt files. Nine forensic detection techniques: LSB chi-squared, histogram analysis, error level analysis, visual noise, metadata inspection, file size anomalies, trailing data, RS Analysis (Fridrich 2001), and Sample Pair Analysis. Plus multi-step image validation with repair capability for JPEG, PNG, and GIF.
+
+Includes a Gradio web UI with bit-layer visualization (see all 8 bit planes per channel), an interactive CLI builder, and batch processing. Deployed on Hugging Face Spaces.
 
 ## Topics
+- steganography
+- steganalysis
+- lsb-steganography
+- image-forensics
+- data-hiding
+- information-security
 - image-processing
 - corruption-detection
 - jpeg-repair
 - python-tool
 - image-validation
-- photo-management
-- visual-analysis
-- file-cleaner
+- gradio
+- huggingface-spaces
 - digital-preservation
-- memory-preservation
+- reversible-data-hiding
+- histogram-shifting
+- rs-analysis
+- sample-pair-analysis
+- bit-plane-visualization
+- cybersecurity-education

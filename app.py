@@ -591,7 +591,7 @@ dark_noir = gr.themes.Soft(
 )
 
 
-with gr.Blocks(title="2PAC + RAT Finder", theme=dark_noir) as demo:
+with gr.Blocks(title="2PAC + RAT Finder") as demo:
     gr.Markdown(HEADER)
     gr.Markdown(MEMORIAL)
 
@@ -811,4 +811,4 @@ with gr.Blocks(title="2PAC + RAT Finder", theme=dark_noir) as demo:
 
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(theme=dark_noir)
