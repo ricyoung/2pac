@@ -140,6 +140,51 @@ def sample_lsb_stego_image():
         _cleanup(input_path, output_path)
 
 
+def start_here_demo(secret_text):
+    """Live demo: embed a secret, show the two images, extract it back."""
+    if not secret_text or not secret_text.strip():
+        secret_text = "Meet me at the library, 3rd floor, 10pm. Bring the flash drive."
+
+    input_path = output_path = None
+    try:
+        image = sample_clean_image()
+        input_path = _save_numpy_image(image)
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as tmp:
+            output_path = tmp.name
+
+        ok, _, stats = lsb.embed_data(input_path, secret_text, output_path, bits_per_channel=1)
+        if not ok:
+            return image, None, None, "Embedding failed."
+
+        stego = np.array(Image.open(output_path).convert('RGB'))
+
+        # Show the difference amplified so it's visible
+        diff = np.abs(image.astype(np.int16) - stego.astype(np.int16))
+        diff_amplified = np.clip(diff * 255, 0, 255).astype(np.uint8)
+
+        ok2, _, extracted = lsb.extract_data(output_path, bits_per_channel=1)
+        if not ok2:
+            return image, stego, diff_amplified, "Extraction failed."
+
+        changed = int(np.sum(diff > 0))
+        total = diff.size
+        pct = changed / total * 100
+
+        result = (
+            f"**Step 1 — Embedded.** Your {stats['data_size']}-byte message went into the image.\n\n"
+            f"**Step 2 — Compare.** The two images look identical. "
+            f"Only **{changed:,} of {total:,}** pixel values changed ({pct:.1f}%), each by exactly 1.\n\n"
+            f"The third image shows the difference amplified 255× — that's your secret, made visible.\n\n"
+            f"**Step 3 — Extracted back:**\n\n"
+            f"```text\n{extracted}\n```"
+        )
+        return image, stego, diff_amplified, result
+    except Exception as e:
+        return None, None, None, f"Demo error: {str(e)}"
+    finally:
+        _cleanup(input_path, output_path)
+
+
 def visualize_bit_layers(image, channel):
     """Extract and display all 8 bit planes for a selected channel."""
     if image is None:
@@ -482,27 +527,30 @@ MEMORIAL = """
 INTRO_SECTION = """
 ### Two tools, two jobs.
 
-**2PAC** - You want to put data in. Someone is sneaking information to the feds, hiding messages inside vacation photos, or exfiltrating data through image attachments. That's what 2PAC does - it hides text inside images so nobody knows it's there. You can also extract it back out.
+| | **2PAC** | **RAT Finder** |
+|---|---|---|
+| **Job** | Put data **in** | Find what's **wrong** |
+| **You want to...** | Hide a secret message inside an image | Check if an image hides something — or is corrupt |
+| **Go to tab** | → **2PAC** | → **RAT Finder** |
 
-**RAT Finder** - You want to catch a RAT. Someone sent you an image that looks normal but might have a secret payload hidden inside. Or you have a folder of images and some of them are corrupt - broken headers, truncated files, gray blocks where the photo should be. RAT Finder detects both: steganography and corruption. Use a RAT to catch a RAT.
+**The core idea:** a digital photo is just a grid of numbers. Change the *last digit* of a few numbers and nobody can tell — but those digits can carry a message. That's steganography.
 """
 
 
 HOW_STEGO_WORKS = """
-### How does steganography work?
+Every pixel is three numbers (red, green, blue), each 0–255 — that's 8 binary bits each.
 
-Every pixel in a digital image is stored as numbers - three channels (red, green, blue), each 0–255. That's 8 binary bits per channel.
-
-LSB steganography changes only the **last bit** - the least significant bit. The visual change is invisible:
+LSB steganography flips only the **last bit** of a pixel value. The change is invisible:
 
 ```
-Original pixel:   R=156   G=89    B=201
-Binary:           10011100 01011001 11001001
-                                            ^--- this bit stores your secret
-Modified pixel:   R=156   G=88    B=201     (89→88, undetectable to the eye)
+Original:   G = 89   →  01011001
+Modified:   G = 88   →  01011000
+                              ^ this bit now stores your secret
 ```
 
-A 1000×1000 image can hide roughly **375 KB** of text this way. What does that mean?
+89 vs 88 — your eye can't see it, but that one bit carries data.
+
+**How much fits?** A 1000×1000 photo holds ~375 KB:
 
 | Reference | Size |
 |---|---|
@@ -510,46 +558,57 @@ A 1000×1000 image can hide roughly **375 KB** of text this way. What does that 
 | A typical email | ~2–5 KB |
 | The US Constitution | ~46 KB |
 | A 20-page research paper | ~150 KB |
-| A full novel (~60,000 words) | ~360 KB |
+| **A full novel (~60,000 words)** | **~360 KB** |
 
-So a single 1000×1000 photo can hide roughly **a full novel**. A 4K phone photo (4000×3000) can hide ~4.5 MB - about twelve novels.
+One photo ≈ one novel. A 4K phone photo ≈ twelve novels.
 
-Add a password and the data is XOR-encrypted before embedding.
-
-2PAC also offers **DCT mode** (experimental) which hides data in the frequency domain instead of pixel values - harder to detect but with much lower capacity.
+Add a password and the message is encrypted before hiding. **2PAC** also offers *pixel scattering* (bits spread across the image in a password-driven order, harder to detect) and *reversible data hiding* (the original image is restored perfectly after extraction) — both via the CLI.
 """
 
 
 HOW_DETECTION_WORKS = """
-### How does RAT Finder detect steganography?
+RAT Finder runs **nine forensic tests** and combines them into one confidence score. Each looks for a different tell-tale sign of hidden data:
 
-Seven forensic techniques combined into a weighted confidence score:
+| Test | What it looks for |
+|---|---|
+| **LSB Chi-Squared** | Natural images have *structured* last bits. Hidden data makes them uniformly random. |
+| **RS Analysis** | Flipping last bits changes image "smoothness" differently in clean vs. stego images. |
+| **Sample Pair Analysis** | Adjacent pixels with near-identical values get disrupted by embedding. |
+| **Histogram Analysis** | Systematic bit-flipping leaves a "comb pattern" in the color histogram. |
+| **Error Level Analysis** | Re-saves the image; edited regions show different compression errors. |
+| **Visual Noise** | Hidden data creates a detectable imbalance between color channels. |
+| **Metadata Inspection** | Known stego tools (OutGuess, StegHide, F5) leave signatures in EXIF. |
+| **File Size Anomalies** | Embedded payloads bloat files beyond expected size. |
+| **Trailing Data** | Data appended after the file's official end marker. |
 
-- **LSB Chi-Squared** - Natural images have structured LSBs. Steganography makes them uniformly random. A statistical test catches this.
-- **Histogram Analysis** - Systematic LSB modification creates a distinctive "comb pattern" in color histograms.
-- **Error Level Analysis** - Re-saves the image and measures pixel differences. Edited regions show different error levels.
-- **Visual Noise** - Compares noise levels across color channels. Steganography creates a detectable imbalance.
-- **Metadata Inspection** - Scans EXIF data for known steganography tool signatures (OutGuess, StegHide, JSteg, F5).
-- **File Size Anomalies** - Compares file size against expected ranges. Embedded payloads bloat files.
-- **Trailing Data** - Checks for data appended after the file's official end-of-file marker.
-
-A confidence score >= 70% means HIGH SUSPICION.
+**Reading the score:** ≥70% = HIGH suspicion, 40–69% = MODERATE, <40% = LOW. A high score means *forensic anomalies exist* — it's a signal to investigate, not proof of a message.
 """
 
 
 HOW_VALIDATION_WORKS = """
-### How does image validation work?
+Separate from steganography, RAT Finder also checks whether image files are **damaged** — broken headers, truncated downloads, gray blocks from failing storage.
 
-RAT Finder runs images through a multi-step pipeline:
+The pipeline, in order:
 
-1. **Header check** - Quick structural validation
-2. **Full pixel decode** - Reads every pixel to catch truncation
-3. **Visual corruption** *(optional)* - Detects gray/black blocks from damaged storage or incomplete writes
-4. **Structure audit** - JPEG marker chain or PNG chunk validation
-5. **Re-encode test** - Catches subtle decoder errors
-6. **External tools** - Runs `exiftool` and ImageMagick if available
+1. **Header check** — is the file format signature valid?
+2. **Full pixel decode** — can every pixel actually be read? (catches truncation)
+3. **Visual corruption** *(optional)* — detects gray/black blocks a damaged file produces
+4. **Structure audit** — validates the JPEG marker chain or PNG chunk structure
+5. **Re-encode test** — catches subtle decoder errors that pass the basic checks
+6. **External tools** — runs `exiftool` and ImageMagick if installed
 
-Supports JPEG, PNG, GIF, TIFF, BMP, WebP, HEIC, and ICO. Repair is available for JPEG, PNG, and GIF.
+Supports JPEG, PNG, GIF, TIFF, BMP, WebP, HEIC, ICO. **Repair** is available for JPEG, PNG, and GIF.
+"""
+
+
+QUICK_START = """
+### Try it in 30 seconds
+
+1. Click **"Run the demo"** below — a secret message gets hidden in a sample image, then extracted back out.
+2. Compare the first two images. They look identical — that's the point.
+3. The third image shows the difference amplified 255×. That's your secret, made visible.
+
+Then go to the **2PAC** tab to hide your own message, or the **RAT Finder** tab to analyze a suspicious image.
 """
 
 
@@ -598,28 +657,37 @@ with gr.Blocks(title="2PAC + RAT Finder") as demo:
     with gr.Tabs():
         with gr.Tab("Start Here"):
             gr.Markdown(INTRO_SECTION)
-            with gr.Row():
-                with gr.Column():
-                    gr.Markdown(
-                        "### 2PAC - Put Data In\n"
-                        "You want to **hide data inside an image**.\n\n"
-                        "- Hide a message that nobody can see\n"
-                        "- Extract hidden messages from images\n"
-                        "- Password-protect your secrets\n\n"
-                        "Go to the **2PAC** tab to hide or extract data."
-                    )
-                with gr.Column():
-                    gr.Markdown(
-                        "### RAT Finder - Catch a RAT\n"
-                        "You want to **find out what's wrong with an image**.\n\n"
-                        "- Someone sent you a photo - is there a hidden payload?\n"
-                        "- Is this JPEG corrupt? Is this PNG truncated?\n"
-                        "- Batch-check entire folders for problems\n\n"
-                        "Go to the **RAT Finder** tab to analyze images."
-                    )
-            gr.Markdown(HOW_STEGO_WORKS)
-            gr.Markdown(HOW_DETECTION_WORKS)
-            gr.Markdown(HOW_VALIDATION_WORKS)
+
+            with gr.Accordion("▶ Try it in 30 seconds", open=True):
+                gr.Markdown(QUICK_START)
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        demo_secret = gr.Textbox(
+                            label="Your secret message",
+                            lines=2,
+                            value="Meet me at the library, 3rd floor, 10pm. Bring the flash drive.",
+                        )
+                        demo_btn = gr.Button("Run the demo", variant="primary")
+                    with gr.Column(scale=2):
+                        with gr.Row():
+                            demo_orig = gr.Image(label="1. Original", height=180, format="png", interactive=False)
+                            demo_stego = gr.Image(label="2. With secret hidden", height=180, format="png", interactive=False)
+                            demo_diff = gr.Image(label="3. Difference (×255)", height=180, format="png", interactive=False)
+                        demo_out = gr.Markdown()
+                demo_btn.click(
+                    fn=start_here_demo,
+                    inputs=[demo_secret],
+                    outputs=[demo_orig, demo_stego, demo_diff, demo_out],
+                )
+
+            with gr.Accordion("How steganography works", open=False):
+                gr.Markdown(HOW_STEGO_WORKS)
+
+            with gr.Accordion("How RAT Finder detects hidden data", open=False):
+                gr.Markdown(HOW_DETECTION_WORKS)
+
+            with gr.Accordion("How image validation works", open=False):
+                gr.Markdown(HOW_VALIDATION_WORKS)
 
         with gr.Tab("2PAC"):
             with gr.Tabs():
@@ -811,4 +879,4 @@ with gr.Blocks(title="2PAC + RAT Finder") as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(theme=dark_noir)
+    demo.launch(theme=dark_noir, ssr_mode=False)
