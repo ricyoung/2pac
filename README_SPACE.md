@@ -13,25 +13,25 @@ license: mit
 
 # 2PAC + RAT Finder
 
-**2PAC** hides secret data inside images. **RAT Finder** catches problems — hidden data, corrupt files, broken images.
+**2PAC** hides secret data inside images. **RAT Finder** catches problems - hidden data, corrupt files, broken images.
 
-You want to put data in — use **2PAC**. You want to find out if it's bad — use **RAT Finder**.
+You want to put data in - use **2PAC**. You want to find out if it's bad - use **RAT Finder**.
 
 ## What You Can Do
 
 ### 2PAC (Put Data In)
 
-- Hide text using **LSB steganography** — stable, high capacity, visually imperceptible
-- Try **DCT steganography** — frequency-domain, harder to detect, experimental
+- Hide text using **LSB steganography** - stable, high capacity, visually imperceptible
+- Try **DCT steganography** - frequency-domain, harder to detect, experimental
 - **Password-protect** your hidden data
 - **Extract** messages from images created by 2PAC
 - Load generated demo images directly in the UI
 
 ### RAT Finder (Find Problems)
 
-- **Detect steganography** — 7 forensic techniques analyze images for hidden data
-- **Check image integrity** — validate JPEG, PNG, GIF, TIFF, BMP, WebP files
-- **Batch validate** — upload multiple files and get a status table
+- **Detect steganography** - 7 forensic techniques analyze images for hidden data
+- **Check image integrity** - validate JPEG, PNG, GIF, TIFF, BMP, WebP files
+- **Batch validate** - upload multiple files and get a status table
 - Find corrupt, truncated, and visually damaged images
 
 ## Local CLI
@@ -50,7 +50,7 @@ python ratfinder.py scan ./photos --thorough --repair
 ## Notes
 
 - Keep stego output as **PNG**. JPEG recompression destroys hidden data.
-- RAT Finder confidence is not proof of a secret message — it means forensic anomalies exist.
+- RAT Finder confidence is not proof of a secret message - it means forensic anomalies exist.
 - Processing happens in the active session; temporary files are deleted after use.
 
 Created by [Richard Young](https://github.com/ricyoung) | [DeepNeuro.AI](https://deepneuro.ai)

@@ -21,6 +21,8 @@ def cmd_hide(args):
     output = args.output or os.path.splitext(args.image)[0] + '_stego.png'
 
     if args.dct:
+        print("WARNING: DCT mode is non-functional — extraction does not reliably roundtrip.")
+        print("         Use LSB (default) for reliable embedding. Proceeding anyway...\n")
         embedder = DctStegEmbedder(quality=args.quality)
         success, msg, stats = embedder.embed_data(
             args.image, args.data, output, password=args.password
@@ -42,6 +44,7 @@ def cmd_hide(args):
 
 def cmd_extract(args):
     if args.dct:
+        print("WARNING: DCT mode is non-functional — extraction does not reliably roundtrip.\n")
         embedder = DctStegEmbedder()
         success, msg, data = embedder.extract_data(
             args.image, password=args.password
