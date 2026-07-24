@@ -15,12 +15,18 @@ import sys
 
 from steg_embedder import StegEmbedder
 from dct_steg import DctStegEmbedder
+from rdh_embedder import RdhEmbedder
 
 
 def cmd_hide(args):
     output = args.output or os.path.splitext(args.image)[0] + '_stego.png'
 
-    if args.dct:
+    if args.rdh:
+        embedder = RdhEmbedder()
+        success, msg, stats = embedder.embed_data(
+            args.image, args.data, output, password=args.password
+        )
+    elif args.dct:
         print("WARNING: DCT mode is non-functional — extraction does not reliably roundtrip.")
         print("         Use LSB (default) for reliable embedding. Proceeding anyway...\n")
         embedder = DctStegEmbedder(quality=args.quality)
@@ -32,7 +38,8 @@ def cmd_hide(args):
         success, msg, stats = embedder.embed_data(
             args.image, args.data, output,
             password=args.password,
-            bits_per_channel=args.bits
+            bits_per_channel=args.bits,
+            scatter=args.scatter
         )
 
     print(msg)
@@ -43,7 +50,13 @@ def cmd_hide(args):
 
 
 def cmd_extract(args):
-    if args.dct:
+    if args.rdh:
+        embedder = RdhEmbedder()
+        restore = getattr(args, 'restore', None)
+        success, msg, data = embedder.extract_data(
+            args.image, password=args.password, restore_path=restore
+        )
+    elif args.dct:
         print("WARNING: DCT mode is non-functional — extraction does not reliably roundtrip.\n")
         embedder = DctStegEmbedder()
         success, msg, data = embedder.extract_data(
@@ -53,7 +66,8 @@ def cmd_extract(args):
         embedder = StegEmbedder()
         success, msg, data = embedder.extract_data(
             args.image, password=args.password,
-            bits_per_channel=args.bits
+            bits_per_channel=args.bits,
+            scatter=args.scatter
         )
 
     print(msg)
@@ -77,12 +91,17 @@ def main():
     p_hide.add_argument('--dct', action='store_true', help='Use DCT (experimental, lower capacity)')
     p_hide.add_argument('--bits', type=int, default=1, help='LSB bits per channel 1-4 (default: 1)')
     p_hide.add_argument('--quality', type=int, default=95, help='DCT quality (default: 95)')
+    p_hide.add_argument('--scatter', action='store_true', help='Scatter bits across non-sequential pixels (harder to detect)')
+    p_hide.add_argument('--rdh', action='store_true', help='Use reversible data hiding (lossless, lower capacity)')
 
     p_ext = sub.add_parser('extract', help='Extract hidden data from an image')
     p_ext.add_argument('--image', required=True, help='Image to extract from')
     p_ext.add_argument('--password', help='Decryption password')
     p_ext.add_argument('--dct', action='store_true', help='DCT extraction (default: LSB)')
     p_ext.add_argument('--bits', type=int, default=1, help='LSB bits per channel (default: 1)')
+    p_ext.add_argument('--scatter', action='store_true', help='Use scattered pixel order (must match embedding)')
+    p_ext.add_argument('--rdh', action='store_true', help='Extract from reversible data hiding image')
+    p_ext.add_argument('--restore', help='Save restored original image to this path (RDH only)')
 
     args = parser.parse_args()
 

@@ -416,3 +416,98 @@ class TestEdgeCases:
         finally:
             if os.path.exists(rgba_path):
                 os.unlink(rgba_path)
+
+
+class TestPixelScattering:
+    def test_scatter_round_trip(self, embedder, temp_png_path, temp_output_path):
+        message = "Scattered secret message"
+        password = "scatter-key"
+        success, _, stats = embedder.embed_data(
+            temp_png_path, message, temp_output_path,
+            password=password, bits_per_channel=1, scatter=True
+        )
+        assert success
+        assert stats['scatter'] is True
+
+        success2, _, extracted = embedder.extract_data(
+            temp_output_path, password=password,
+            bits_per_channel=1, scatter=True
+        )
+        assert success2
+        assert extracted == message
+
+    def test_scatter_without_password(self, embedder, temp_png_path, temp_output_path):
+        message = "Scatter no password"
+        success, _, _ = embedder.embed_data(
+            temp_png_path, message, temp_output_path,
+            bits_per_channel=1, scatter=True
+        )
+        assert success
+
+        success2, _, extracted = embedder.extract_data(
+            temp_output_path, bits_per_channel=1, scatter=True
+        )
+        assert success2
+        assert extracted == message
+
+    def test_scatter_wrong_password_fails(self, embedder, temp_png_path, temp_output_path):
+        message = "Secret"
+        embedder.embed_data(
+            temp_png_path, message, temp_output_path,
+            password="correct", bits_per_channel=1, scatter=True
+        )
+        # Wrong password → different permutation → can't find header
+        success, msg, _ = embedder.extract_data(
+            temp_output_path, password="wrong",
+            bits_per_channel=1, scatter=True
+        )
+        assert not success
+
+    def test_scatter_mismatch_fails(self, embedder, temp_png_path, temp_output_path):
+        message = "Scatter mismatch test"
+        embedder.embed_data(
+            temp_png_path, message, temp_output_path,
+            password="key", bits_per_channel=1, scatter=True
+        )
+        # Extract without scatter → sequential read of scattered data → fail
+        success, _, _ = embedder.extract_data(
+            temp_output_path, password="key",
+            bits_per_channel=1, scatter=False
+        )
+        assert not success
+
+    def test_scatter_bits2_round_trip(self, embedder, temp_png_path, temp_output_path):
+        message = "Scatter with 2 bits"
+        success, _, _ = embedder.embed_data(
+            temp_png_path, message, temp_output_path,
+            password="key", bits_per_channel=2, scatter=True
+        )
+        assert success
+
+        success2, _, extracted = embedder.extract_data(
+            temp_output_path, password="key",
+            bits_per_channel=2, scatter=True
+        )
+        assert success2
+        assert extracted == message
+
+    def test_scatter_deterministic(self, embedder, temp_png_path):
+        """Same password produces same permutation → same output."""
+        import tempfile
+        msg = "determinism check"
+        paths = []
+        for _ in range(2):
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
+                paths.append(f.name)
+            embedder.embed_data(
+                temp_png_path, msg, paths[-1],
+                password="same", bits_per_channel=1, scatter=True
+            )
+        try:
+            img1 = np.array(Image.open(paths[0]))
+            img2 = np.array(Image.open(paths[1]))
+            assert np.array_equal(img1, img2)
+        finally:
+            for p in paths:
+                if os.path.exists(p):
+                    os.unlink(p)

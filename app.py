@@ -140,6 +140,44 @@ def sample_lsb_stego_image():
         _cleanup(input_path, output_path)
 
 
+def visualize_bit_layers(image, channel):
+    """Extract and display all 8 bit planes for a selected channel."""
+    if image is None:
+        return None, "Upload an image first."
+
+    channel_idx = {'Red': 0, 'Green': 1, 'Blue': 2}.get(channel, 1)
+    channel_name = channel.lower()
+
+    arr = np.array(image)
+    if arr.ndim == 2:
+        arr = np.stack([arr] * 3, axis=-1)
+    ch = arr[:, :, channel_idx]
+
+    h, w = ch.shape
+    cell_h, cell_w = h, w
+    grid = np.zeros((cell_h * 2, cell_w * 4, 3), dtype=np.uint8)
+
+    labels = []
+    for bit in range(8):
+        plane = ((ch >> bit) & 1) * 255
+        plane_rgb = np.stack([plane] * 3, axis=-1).astype(np.uint8)
+        row = bit // 4
+        col = bit % 4
+        grid[row * cell_h:(row + 1) * cell_h, col * cell_w:(col + 1) * cell_w] = plane_rgb
+        labels.append(f"Bit {bit}")
+
+    info = (
+        f"**{channel.capitalize()} channel — 8 bit planes**\n\n"
+        f"Each image shows one bit plane (bit 0 = LSB, bit 7 = MSB).\n"
+        f"White pixels = bit is 1, black = bit is 0.\n\n"
+        f"**Bit 0 (LSB)** is where 2PAC hides data at 1 bit/channel. "
+        f"Notice how it looks like random noise — that's what makes LSB steganography hard to see.\n\n"
+        f"Higher bits show the actual image structure. "
+        f"Bits 6–7 carry most of the visual information."
+    )
+    return grid, info
+
+
 def hide_lsb(image, secret_text, password, bits_per_channel):
     if image is None:
         return None, None, "Upload an image first."
@@ -629,6 +667,27 @@ with gr.Blocks(title="2PAC + RAT Finder", theme=dark_noir) as demo:
                         with gr.Column(scale=1):
                             ext_out = gr.Markdown()
                     ext_btn.click(fn=extract_data, inputs=[ext_in, ext_pass, ext_bits, ext_method], outputs=[ext_out])
+
+                with gr.Tab("Bit Layers"):
+                    gr.Markdown(
+                        "### Bit-Plane Visualization\n\n"
+                        "Every pixel value is 8 bits. This tool splits each channel into its 8 bit planes "
+                        "so you can see exactly where hidden data lives.\n\n"
+                        "**Bit 0 (LSB)** looks like random noise — that's where 2PAC embeds data. "
+                        "**Bits 6–7** carry the visible image. Modify bit 0 and nobody can tell."
+                    )
+                    with gr.Row():
+                        with gr.Column(scale=1):
+                            bit_in = gr.Image(label="Image to analyze", type="numpy", height=300, format="png")
+                            with gr.Row():
+                                gr.Button("Load clean sample").click(fn=sample_clean_image, outputs=[bit_in])
+                                gr.Button("Load LSB stego sample").click(fn=sample_lsb_stego_image, outputs=[bit_in])
+                            bit_channel = gr.Radio(['Red', 'Green', 'Blue'], value='Green', label="Channel")
+                            bit_btn = gr.Button("Show Bit Layers", variant="primary")
+                        with gr.Column(scale=2):
+                            bit_out = gr.Image(label="Bit planes (bit 0–3 top row, bit 4–7 bottom row)", height=400, format="png", interactive=False)
+                            bit_info = gr.Markdown()
+                    bit_btn.click(fn=visualize_bit_layers, inputs=[bit_in, bit_channel], outputs=[bit_out, bit_info])
 
         with gr.Tab("RAT Finder"):
             with gr.Tabs():

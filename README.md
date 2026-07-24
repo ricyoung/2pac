@@ -43,6 +43,8 @@ python ratfinder.py check broken.jpg --check-visual
 | Method | How it works | Capacity | Status |
 |---|---|---|---|
 | **LSB** | Modifies the least significant bit of pixel values - invisible to the eye | ~375 KB per megapixel | Stable |
+| **LSB + Scatter** | Password-seeded pixel permutation — bits scattered non-sequentially | Same as LSB | Stable |
+| **RDH** | Reversible data hiding via histogram shifting — original image perfectly restored | Low (depends on histogram peak) | Stable |
 | **DCT** | Hides data in frequency-domain coefficients - harder to detect | ~116 bytes per 256×256 image | Non-functional (extraction fails) |
 
 ```bash
@@ -52,12 +54,17 @@ python 2pac.py hide --image photo.png --data "secret message" --output out.png
 # Encrypted
 python 2pac.py hide --image photo.png --data "secret" --password hunter2 --output out.png
 
-# DCT mode (non-functional — extraction fails, kept for research)
-# python 2pac.py hide --image photo.png --data "secret" --dct --output out.png
+# Scattered (password-seeded pixel permutation — harder to detect)
+python 2pac.py hide --image photo.png --data "secret" --password key --scatter --output out.png
+
+# Reversible data hiding (lossless — original image restored on extraction)
+python 2pac.py hide --image photo.png --data "secret" --rdh --output out.png
 
 # Extract
 python 2pac.py extract --image out.png
 python 2pac.py extract --image out.png --password hunter2
+python 2pac.py extract --image out.png --password key --scatter
+python 2pac.py extract --image out.png --rdh --restore original.png
 ```
 
 **Key details:**
@@ -83,7 +90,7 @@ So a single 1000×1000 photo can hide roughly a full novel's worth of text. A 4K
 
 RAT Finder detects two kinds of image problems:
 
-**Steganography detection** - Seven forensic techniques that analyze an image for signs of hidden data:
+**Steganography detection** - Nine forensic techniques that analyze an image for signs of hidden data:
 
 | # | Technique | What it detects |
 |---|---|---|
@@ -94,6 +101,8 @@ RAT Finder detects two kinds of image problems:
 | 5 | Metadata Inspection | Known steganography tool signatures in EXIF |
 | 6 | File Size Anomalies | Suspiciously large or small files |
 | 7 | Trailing Data | Data appended after end-of-file markers |
+| 8 | RS Analysis | Regular/Singular group asymmetry from LSB embedding (Fridrich 2001) |
+| 9 | Sample Pair Analysis | Adjacent-pair statistics estimate LSB modification rate |
 
 **Image validation** - Multi-step pipeline that checks for structural corruption:
 
@@ -172,9 +181,10 @@ Or use the web UI: [richardyoung-2pac.hf.space](https://richardyoung-2pac.hf.spa
 ├── 2pac.py                 # CLI: hide + extract data
 ├── ratfinder.py            # CLI: detect stego + scan corrupt images
 ├── app.py                  # Gradio web UI
-├── steg_embedder.py        # LSB steganography engine
-├── dct_steg.py             # DCT steganography engine (experimental)
-├── rat_finder.py           # Steganography detection - 7 forensic techniques
+├── steg_embedder.py        # LSB steganography engine (with pixel scattering)
+├── rdh_embedder.py         # Reversible data hiding engine (histogram shifting)
+├── dct_steg.py             # DCT steganography engine (non-functional)
+├── rat_finder.py           # Steganography detection - 9 forensic techniques
 ├── find_bad_images/        # Image corruption scanner
 │   ├── config.py           # Format definitions
 │   ├── security.py         # File validation, path traversal prevention
@@ -183,8 +193,10 @@ Or use the web UI: [richardyoung-2pac.hf.space](https://richardyoung-2pac.hf.spa
 │   └── cli.py              # Internal CLI logic
 ├── utils.py                # Shared logging, sensitivity mapping
 ├── tests/
-│   ├── test_steg_embedder.py  # 35 LSB tests
-│   └── test_dct_steg.py       # 9 DCT tests
+│   ├── test_steg_embedder.py  # 41 LSB + scatter tests
+│   ├── test_rdh_embedder.py   # 26 RDH tests
+│   ├── test_rat_finder.py     # 24 detection tests
+│   └── test_dct_steg.py       # 15 DCT tests (8 xfail)
 └── requirements.txt
 ```
 

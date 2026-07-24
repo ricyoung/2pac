@@ -88,13 +88,23 @@ class StegEmbedder:
 
         return bytes(decrypted).decode('utf-8', errors='replace')
 
+    def _pixel_order(self, n: int, password: Optional[str], scatter: bool):
+        """Return pixel indices in sequential or scattered order."""
+        if not scatter:
+            return range(n)
+        seed_str = password if password else '2pac-default-scatter'
+        seed = int.from_bytes(hashlib.sha256(seed_str.encode()).digest()[:8], 'big')
+        rng = np.random.default_rng(seed)
+        return rng.permutation(n)
+
     def embed_data(
         self,
         image_path: str,
         data: str,
         output_path: str,
         password: Optional[str] = None,
-        bits_per_channel: int = 1
+        bits_per_channel: int = 1,
+        scatter: bool = False
     ) -> Tuple[bool, str, dict]:
         """
         Hide data in an image using LSB steganography
@@ -105,6 +115,8 @@ class StegEmbedder:
             output_path: Path for output image (will be PNG)
             password: Optional password for encryption
             bits_per_channel: LSBs to use per channel (1=subtle, 2-4=more capacity)
+            scatter: If True, scatter bits across non-sequential pixel positions
+                     using a password-seeded permutation (harder to detect)
 
         Returns:
             Tuple of (success, message, stats_dict)
@@ -146,8 +158,10 @@ class StegEmbedder:
             img_array = np.array(img, dtype=np.uint8)
             flat_array = img_array.flatten()
 
+            pixel_indices = self._pixel_order(len(flat_array), password, scatter)
+
             bit_index = 0
-            for i in range(len(flat_array)):
+            for i in pixel_indices:
                 if bit_index >= len(bit_string):
                     break
 
@@ -180,6 +194,7 @@ class StegEmbedder:
                 'utilization': f"{(data_length / capacity * 100):.1f}%",
                 'encrypted': is_encrypted,
                 'bits_per_channel': bits_per_channel,
+                'scatter': scatter,
                 'image_size': f"{img.width}x{img.height}"
             }
 
@@ -192,7 +207,8 @@ class StegEmbedder:
         self,
         image_path: str,
         password: Optional[str] = None,
-        bits_per_channel: int = 1
+        bits_per_channel: int = 1,
+        scatter: bool = False
     ) -> Tuple[bool, str, str]:
         """
         Extract hidden data from a steganographic image
@@ -201,6 +217,7 @@ class StegEmbedder:
             image_path: Path to image with hidden data
             password: Password if data is encrypted
             bits_per_channel: LSBs used per channel (must match embedding)
+            scatter: Must match the scatter setting used during embedding
 
         Returns:
             Tuple of (success, message, extracted_data)
@@ -215,8 +232,10 @@ class StegEmbedder:
             header_bits = (len(self.MAGIC_NUMBER) + 1 + 4 + 8) * 8
             extracted_bits = []
 
+            pixel_indices = self._pixel_order(len(flat_array), password, scatter)
+
             bit_index = 0
-            for i in range(len(flat_array)):
+            for i in pixel_indices:
                 if bit_index >= header_bits:
                     break
                 pixel = int(flat_array[i])
@@ -254,7 +273,7 @@ class StegEmbedder:
             extracted_bits = []
 
             bit_index = 0
-            for i in range(len(flat_array)):
+            for i in pixel_indices:
                 if bit_index >= total_bits_needed:
                     break
                 pixel = flat_array[i]

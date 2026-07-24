@@ -115,7 +115,11 @@ class TestEmbedExtract:
         assert not success
         assert "magic" in msg.lower()
 
-    @_xfail
+    _xfail_nonstrict = pytest.mark.xfail(
+        reason="DCT embed/extract roundtrip is non-functional", strict=False
+    )
+
+    @_xfail_nonstrict
     def test_missing_password_for_encrypted(self, embedder, temp_png_path, temp_output_path):
         embedder.embed_data(temp_png_path, "secret", temp_output_path, password="key")
         success, msg, _ = embedder.extract_data(temp_output_path)

@@ -573,6 +573,177 @@ def check_visual_noise_anomalies(image_path):
         logging.debug(f"Error analyzing visual noise in {image_path}: {str(e)}")
         return False, 0, {"error": str(e)}
 
+def check_rs_analysis(image_path):
+    """
+    RS Analysis (Regular/Singular) for LSB steganography detection.
+
+    Based on Fridrich et al. 2001. Examines groups of pixels and classifies
+    them by how their total variation changes when LSBs are flipped.
+    In clean images, positive and negative masks produce symmetric R/S counts.
+    LSB embedding breaks this symmetry.
+
+    Returns:
+        (is_suspicious, confidence, details)
+    """
+    try:
+        with Image.open(image_path) as img:
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img_array = np.array(img)
+
+        channel_results = {}
+        asymmetries = []
+
+        for c, name in enumerate(['red', 'green', 'blue']):
+            pixels = img_array[:, :, c].flatten().astype(np.int32)
+            n = len(pixels)
+            # Use pairs: mask [1, 0] means flip the first pixel of each pair
+            num_pairs = n // 2
+            if num_pairs == 0:
+                continue
+
+            pairs = pixels[:num_pairs * 2].reshape(num_pairs, 2)
+
+            # Discrimination: |p1 - p0| for each pair
+            d_orig = np.abs(pairs[:, 1] - pairs[:, 0])
+
+            # Positive mask: flip LSB of first pixel
+            flipped_pos = pairs.copy()
+            flipped_pos[:, 0] ^= 1
+            d_pos = np.abs(flipped_pos[:, 1] - flipped_pos[:, 0])
+
+            # Negative mask: flip LSB of second pixel
+            flipped_neg = pairs.copy()
+            flipped_neg[:, 1] ^= 1
+            d_neg = np.abs(flipped_neg[:, 1] - flipped_neg[:, 0])
+
+            # Classify for positive mask
+            r_pos = int(np.sum(d_pos > d_orig))
+            s_pos = int(np.sum(d_pos < d_orig))
+
+            # Classify for negative mask
+            r_neg = int(np.sum(d_neg > d_orig))
+            s_neg = int(np.sum(d_neg < d_orig))
+
+            # Asymmetry: in clean images R_pos - S_pos ≈ R_neg - S_neg
+            # LSB embedding makes them diverge
+            diff_pos = r_pos - s_pos
+            diff_neg = r_neg - s_neg
+            total = r_pos + s_pos + r_neg + s_neg
+            asymmetry = abs(diff_pos - diff_neg) / total if total > 0 else 0
+
+            asymmetries.append(asymmetry)
+            channel_results[name] = {
+                'R_pos': r_pos, 'S_pos': s_pos,
+                'R_neg': r_neg, 'S_neg': s_neg,
+                'asymmetry': asymmetry,
+            }
+
+        if not asymmetries:
+            return False, 0, {"error": "Image too small for RS analysis"}
+
+        max_asym = max(asymmetries)
+        mean_asym = float(np.mean(asymmetries))
+
+        # Threshold: asymmetry > 0.05 is suspicious, > 0.15 is strong
+        is_suspicious = mean_asym > 0.05
+        confidence = min(90, int(mean_asym * 500)) if is_suspicious else 0
+
+        details = {
+            "mean_asymmetry": mean_asym,
+            "max_asymmetry": max_asym,
+            "channels": channel_results,
+        }
+
+        return is_suspicious, confidence, details
+    except Exception as e:
+        logging.debug(f"Error in RS analysis on {image_path}: {str(e)}")
+        return False, 0, {"error": str(e)}
+
+def check_sample_pair_analysis(image_path):
+    """
+    Sample Pair Analysis (SPA) for LSB steganography detection.
+
+    Based on Dumitrescu & Wu 2003. Examines pairs of adjacent pixels
+    and estimates the LSB modification rate by analyzing how many
+    close-valued pairs exist. LSB embedding disrupts the natural
+    distribution of close pairs.
+
+    Returns:
+        (is_suspicious, confidence, details)
+    """
+    try:
+        with Image.open(image_path) as img:
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img_array = np.array(img)
+
+        channel_results = {}
+        estimated_rates = []
+
+        for c, name in enumerate(['red', 'green', 'blue']):
+            pixels = img_array[:, :, c].flatten().astype(np.int32)
+            n = len(pixels)
+            num_pairs = n // 2
+            if num_pairs == 0:
+                continue
+
+            pairs = pixels[:num_pairs * 2].reshape(num_pairs, 2)
+            diffs = np.abs(pairs[:, 1] - pairs[:, 0])
+
+            # Count close pairs (|diff| <= 1) — these are disrupted by LSB embedding
+            close_pairs = int(np.sum(diffs <= 1))
+            total_pairs = num_pairs
+
+            # Count pairs with specific diff values for rate estimation
+            diff_0 = int(np.sum(diffs == 0))
+            diff_1 = int(np.sum(diffs == 1))
+            diff_2 = int(np.sum(diffs == 2))
+
+            # SPA estimator: embedding rate p ≈ 1 - (close_pairs / expected_close)
+            # In a clean image, diff_0 ≈ diff_2 (symmetry around diff=1)
+            # LSB embedding breaks this: diff_0 decreases, diff_2 increases
+            if diff_0 + diff_2 > 0:
+                # Ratio should be ~1.0 for clean, deviates for stego
+                ratio = diff_0 / (diff_0 + diff_2) if (diff_0 + diff_2) > 0 else 0.5
+                # Estimated embedding rate: deviation from 0.5
+                est_rate = abs(ratio - 0.5) * 2  # Scale to 0-1
+            else:
+                ratio = 0.5
+                est_rate = 0.0
+
+            estimated_rates.append(est_rate)
+            channel_results[name] = {
+                'close_pairs': close_pairs,
+                'total_pairs': total_pairs,
+                'diff_0': diff_0,
+                'diff_1': diff_1,
+                'diff_2': diff_2,
+                'ratio': ratio,
+                'estimated_rate': est_rate,
+            }
+
+        if not estimated_rates:
+            return False, 0, {"error": "Image too small for SPA"}
+
+        max_rate = max(estimated_rates)
+        mean_rate = float(np.mean(estimated_rates))
+
+        # Threshold: estimated rate > 0.05 is suspicious
+        is_suspicious = mean_rate > 0.05
+        confidence = min(90, int(mean_rate * 300)) if is_suspicious else 0
+
+        details = {
+            "mean_estimated_rate": mean_rate,
+            "max_estimated_rate": max_rate,
+            "channels": channel_results,
+        }
+
+        return is_suspicious, confidence, details
+    except Exception as e:
+        logging.debug(f"Error in SPA on {image_path}: {str(e)}")
+        return False, 0, {"error": str(e)}
+
 def analyze_image(image_path, sensitivity='medium'):
     """
     Perform comprehensive steganography detection on an image.
@@ -646,6 +817,22 @@ def analyze_image(image_path, sensitivity='medium'):
             'confidence': histogram_result[1],
             'details': histogram_result[2]
         }
+
+        # RS Analysis — detects LSB embedding via regular/singular group asymmetry
+        rs_result = check_rs_analysis(image_path)
+        results['rs_analysis'] = {
+            'suspicious': rs_result[0],
+            'confidence': rs_result[1],
+            'details': rs_result[2]
+        }
+
+        # Sample Pair Analysis — estimates LSB modification rate
+        spa_result = check_sample_pair_analysis(image_path)
+        results['sample_pair_analysis'] = {
+            'suspicious': spa_result[0],
+            'confidence': spa_result[1],
+            'details': spa_result[2]
+        }
         
         # Add Error Level Analysis (ELA) for JPEG images
         if image_path.lower().endswith(('.jpg', '.jpeg', '.jfif')):
@@ -657,15 +844,17 @@ def analyze_image(image_path, sensitivity='medium'):
             }
         
         # Calculate overall confidence
-        # Weight the different tests
+        # Weight the different tests (9 techniques, normalized at runtime)
         weights = {
-            'lsb_analysis': 0.25,           # LSB is a common technique
-            'histogram_analysis': 0.20,      # Histogram patterns are strong indicators
-            'file_size_analysis': 0.10,      # Size can be indicative
-            'metadata_analysis': 0.10,       # Metadata less common but useful indicator
-            'trailing_data_analysis': 0.10,  # Detects data after EOF markers
-            'visual_noise_analysis': 0.15,   # Visual noise can be a good indicator
-            'ela_analysis': 0.20            # Error Level Analysis is effective for JPEG manipulation
+            'lsb_analysis': 0.20,           # LSB chi-squared
+            'rs_analysis': 0.15,            # RS group asymmetry
+            'sample_pair_analysis': 0.10,   # SPA modification rate
+            'histogram_analysis': 0.15,     # Histogram comb patterns
+            'file_size_analysis': 0.05,     # Size anomalies
+            'metadata_analysis': 0.05,      # Metadata markers
+            'trailing_data_analysis': 0.10, # Data after EOF
+            'visual_noise_analysis': 0.10,  # Channel noise imbalance
+            'ela_analysis': 0.15            # Error Level Analysis (JPEG)
         }
         
         # Only include weights for methods that were actually run

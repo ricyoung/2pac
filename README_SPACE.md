@@ -22,14 +22,18 @@ You want to put data in - use **2PAC**. You want to find out if it's bad - use *
 ### 2PAC (Put Data In)
 
 - Hide text using **LSB steganography** - stable, high capacity, visually imperceptible
-- Try **DCT steganography** - frequency-domain, harder to detect, experimental
+- **Pixel scattering** - password-seeded permutation scatters bits non-sequentially (harder to detect)
+- **Reversible data hiding (RDH)** - histogram shifting; original image perfectly restored after extraction
 - **Password-protect** your hidden data
 - **Extract** messages from images created by 2PAC
+- **Bit-layer visualization** - see all 8 bit planes per channel and understand where data hides
 - Load generated demo images directly in the UI
+- 1–4 bits per channel: 1 is undetectable, 4 gives more capacity
 
 ### RAT Finder (Find Problems)
 
-- **Detect steganography** - 7 forensic techniques analyze images for hidden data
+- **Detect steganography** - 9 forensic techniques analyze images for hidden data
+  - Includes RS Analysis (Fridrich 2001) and Sample Pair Analysis
 - **Check image integrity** - validate JPEG, PNG, GIF, TIFF, BMP, WebP files
 - **Batch validate** - upload multiple files and get a status table
 - Find corrupt, truncated, and visually damaged images
